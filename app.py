@@ -4,16 +4,17 @@ from flask import Flask, render_template, request, jsonify
 
 app = Flask(__name__)
 
-# Real road path starting at Anurag University going West on Venkatapur Road
+# Exact waypoints tracing your drawn red path (Anurag Univ -> Lake Curve -> Highway)
 WAYPOINTS = [
-    (17.4210, 78.6575), # Start: Anurag University Gate
-    (17.4215, 78.6550), # Venkatapur Road
-    (17.4220, 78.6525), # Venkatapur Road
-    (17.4223, 78.6500), # Venkatapur Road
-    (17.4225, 78.6475), # Venkatapur Road
-    (17.4228, 78.6450), # Venkatapur Road
-    (17.4230, 78.6425), # Venkatapur Road towards Highway junction
-    (17.4232, 78.6400)  # Highway Junction
+    (17.4208, 78.6562), # Start: Near Anurag University entrance
+    (17.4211, 78.6540), # Venkatapur Rd (South of lake)
+    (17.4213, 78.6515), # Curve along lake bottom
+    (17.4215, 78.6490), # Venkatapur Rd
+    (17.4218, 78.6465), # Near Suprabhat Colony bend
+    (17.4228, 78.6440), # Curving Northwest
+    (17.4242, 78.6415), # Heading towards Highway
+    (17.4260, 78.6385), # Westbound road section
+    (17.4280, 78.6350)  # End: Junction with Hyderabad-Janagam Highway
 ]
 
 dashboard_data = {
@@ -23,8 +24,8 @@ dashboard_data = {
     "distance_traveled_km": 0.0,
     "total_potholes": 0,
     "total_material_kg": 0.0,
-    "current_lat": 17.4210,
-    "current_lng": 78.6575,
+    "current_lat": 17.4208,
+    "current_lng": 78.6562,
     "step_idx": 0,
     "returning": False,
     "avoiding_obstacle": False,
@@ -68,8 +69,8 @@ def handle_control():
             dashboard_data['total_potholes'] = 0
             dashboard_data['total_material_kg'] = 0.0
             dashboard_data['detections'] = []
-            dashboard_data['current_lat'] = 17.4210
-            dashboard_data['current_lng'] = 78.6575
+            dashboard_data['current_lat'] = 17.4208
+            dashboard_data['current_lng'] = 78.6562
             dashboard_data['step_idx'] = 0
             dashboard_data['returning'] = False
             dashboard_data['avoiding_obstacle'] = False
@@ -80,7 +81,9 @@ def handle_control():
 def handle_telemetry():
     if dashboard_data['control_state'] == 'RUNNING':
         target_km = dashboard_data['target_km']
-        km_increment = round(target_km / 7.0, 3)
+        
+        # Reduced step increment so the machine moves slowly along the curve
+        km_increment = round(target_km / 25.0, 3)
 
         if not dashboard_data['returning']:
             dashboard_data['avoiding_obstacle'] = False
@@ -91,7 +94,8 @@ def handle_telemetry():
             dashboard_data['current_lat'] = curr_lat
             dashboard_data['current_lng'] = curr_lng
 
-            if random.choice([True, False]):
+            # Pothole detection logic along red road path
+            if random.choice([True, False, False]):
                 mat = round(random.uniform(0.3, 0.8), 2)
                 dashboard_data['total_potholes'] += 1
                 dashboard_data['total_material_kg'] = round(dashboard_data['total_material_kg'] + mat, 2)
@@ -110,8 +114,7 @@ def handle_telemetry():
 
             recorded_steps = [d['step'] for d in dashboard_data['detections']]
             if dashboard_data['step_idx'] in recorded_steps:
-                # Nudge slightly north (lane dodge) on return
-                dashboard_data['current_lat'] = round(base_lat + 0.00015, 5)
+                dashboard_data['current_lat'] = round(base_lat + 0.0001, 5)
                 dashboard_data['current_lng'] = base_lng
                 dashboard_data['avoiding_obstacle'] = True
             else:
