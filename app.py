@@ -6,17 +6,11 @@ import random
 import numpy as np
 from flask import Flask, render_template, request, jsonify, Response
 
-if getattr(sys, 'frozen', False):
-    template_folder = os.path.join(sys._MEIPASS, 'templates')
-    app = Flask(__name__, template_folder=template_folder)
-else:
-    app = Flask(__name__)
+app = Flask(__name__)
 
-# System State Storage
+# Dashboard State
 dashboard_data = {
     "total_potholes": 0,
-    "battery_pct": 100,
-    "network_signal": "Strong (4G)",
     "total_material_kg": 0.0,
     "last_completion_time_sec": 0.0,
     "rover_status": "READY",
@@ -36,7 +30,6 @@ WAYPOINTS = [
     (17.3856, 78.4879), (17.3857, 78.4881), (17.3858, 78.4883)
 ]
 
-# Camera initialization with safety checks
 try:
     camera = cv2.VideoCapture(0)
 except Exception:
@@ -51,14 +44,12 @@ def generate_video_frames():
         if camera is not None and camera.isOpened():
             success, frame = camera.read()
 
-        # Cloud Fallback Stream
         if not success or frame is None:
             time.sleep(0.06)
             frame_count += 1
             frame = np.zeros((360, 640, 3), dtype=np.uint8)
             frame[:] = (20, 25, 35)
 
-            # Simulated road lanes
             offset = (frame_count * 8) % 80
             cv2.line(frame, (200, 360), (300, 0), (100, 100, 100), 2)
             cv2.line(frame, (440, 360), (340, 0), (100, 100, 100), 2)
@@ -91,13 +82,14 @@ def video_feed():
 
 @app.route('/api/config', methods=['POST'])
 def handle_config():
-    data = request.json
+    data = request.json or {}
     dashboard_data['target_km'] = float(data.get('target_km', 0.05))
     return jsonify({"status": "success", "target_km": dashboard_data['target_km']})
 
 @app.route('/api/control', methods=['POST'])
 def handle_control():
-    cmd = request.json.get('command')
+    data = request.json or {}
+    cmd = data.get('command')
     if cmd == 'START':
         dashboard_data['control_state'] = 'RUNNING'
         if dashboard_data['rover_status'] in ['READY', 'COMPLETED', 'STOPPED']:
@@ -118,7 +110,6 @@ def handle_control():
     
     return jsonify({"status": "success", "control_state": dashboard_data['control_state']})
 
-# Browser-Triggered Movement Engine (Guarantees movement on cloud links)
 @app.route('/api/telemetry', methods=['GET'])
 def handle_telemetry():
     if dashboard_data['control_state'] == 'RUNNING':

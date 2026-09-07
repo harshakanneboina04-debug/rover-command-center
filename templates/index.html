@@ -2,41 +2,42 @@
 <html lang="en">
 <head>
     <meta charset="UTF-8">
-    <title>AI Rover GIS Command Center</title>
+    <title>Rover GIS Command Center</title>
     <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
     <style>
-        body { margin: 0; background-color: #0f172a; color: #f8fafc; font-family: sans-serif; display: flex; height: 100vh; }
-        #sidebar { width: 380px; padding: 20px; box-sizing: border-box; display: flex; flex-direction: column; gap: 15px; background: #1e293b; }
+        * { box-sizing: border-box; }
+        body { margin: 0; padding: 0; background-color: #0f172a; color: #f8fafc; font-family: sans-serif; display: flex; height: 100vh; overflow: hidden; }
+        #sidebar { width: 360px; padding: 15px; display: flex; flex-direction: column; gap: 12px; background: #1e293b; z-index: 1000; overflow-y: auto; }
         #map { flex-grow: 1; height: 100%; }
-        .card { background: #0f172a; padding: 15px; border-radius: 8px; border: 1px solid #334155; }
-        .video-box { width: 100%; height: 200px; background: #000; border-radius: 6px; overflow: hidden; display: flex; justify-content: center; align-items: center; }
+        .card { background: #0f172a; padding: 12px; border-radius: 8px; border: 1px solid #334155; }
+        .video-box { width: 100%; height: 180px; background: #000; border-radius: 6px; overflow: hidden; display: flex; justify-content: center; align-items: center; border: 1px solid #475569; }
         .video-box img { width: 100%; height: 100%; object-fit: cover; }
-        .btn-group { display: flex; gap: 10px; margin-top: 10px; }
+        .btn-group { display: flex; gap: 8px; margin-top: 10px; }
         button { flex: 1; padding: 10px; border: none; border-radius: 4px; font-weight: bold; cursor: pointer; color: white; }
         .btn-start { background: #22c55e; }
         .btn-pause { background: #eab308; }
         .btn-stop { background: #ef4444; }
-        .stat { font-size: 1.2rem; font-weight: bold; color: #38bdf8; margin-top: 5px; }
+        .stat { font-size: 1.1rem; font-weight: bold; color: #38bdf8; margin-top: 4px; }
     </style>
 </head>
 <body>
 
 <div id="sidebar">
-    <h2>Rover Command Center</h2>
+    <h3 style="margin:0 0 5px 0;">ROVER GIS LIVE TRACKING</h3>
     
     <div class="card">
         <div class="video-box">
-            <img id="camera-stream" src="/video_feed" alt="Connecting to Camera Stream...">
+            <img id="camera-stream" src="/video_feed" alt="Rover Live Camera Feed Stream">
         </div>
     </div>
 
     <div class="card">
-        <label>Patrol Range Target:</label>
-        <select id="target-km" onchange="updateConfig()" style="width: 100%; padding: 8px; margin-top: 5px;">
-            <option value="0.05">0.05 KM (Quick Demo)</option>
-            <option value="0.5">0.5 KM</option>
-            <option value="1.0">1.0 KM</option>
-            <option value="5.0">5.0 KM</option>
+        <label style="font-size: 0.85rem; font-weight: bold;">SET TARGET RANGE (UP TO 10 KM)</label>
+        <select id="target-km" onchange="updateConfig()" style="width: 100%; padding: 8px; margin-top: 5px; background: #1e293b; color: white; border: 1px solid #475569; border-radius: 4px;">
+            <option value="0.05">0.05 km (50m - Quick Demo)</option>
+            <option value="0.5">0.5 km</option>
+            <option value="1.0">1.0 km</option>
+            <option value="5.0">5.0 km</option>
         </select>
         <div class="btn-group">
             <button class="btn-start" onclick="sendControl('START')">▶ START</button>
@@ -46,10 +47,10 @@
     </div>
 
     <div class="card">
-        <div>Status: <span id="rover-status" class="stat">READY</span></div>
-        <div style="margin-top: 8px;">Distance Traveled: <span id="distance-km" class="stat">0.0 KM</span></div>
-        <div style="margin-top: 8px;">Potholes Repaired: <span id="potholes-count" class="stat">0</span></div>
-        <div style="margin-top: 8px;">Material Used: <span id="material-kg" class="stat">0.0 KG</span></div>
+        <div style="font-size: 0.9rem;">STATUS: <span id="rover-status" class="stat">READY</span></div>
+        <div style="margin-top: 8px; font-size: 0.9rem;">DISTANCE COVERED: <br><span id="distance-km" class="stat">0 / 0.05 km</span></div>
+        <div style="margin-top: 8px; font-size: 0.9rem;">NO. OF HOLES: <br><span id="potholes-count" class="stat">0</span></div>
+        <div style="margin-top: 8px; font-size: 0.9rem;">MATERIAL USED: <br><span id="material-kg" class="stat">0 kg</span></div>
     </div>
 </div>
 
@@ -62,7 +63,7 @@
 
     const roverIcon = L.divIcon({
         className: 'custom-rover',
-        html: '<div style="background:#00f0ff; width:16px; height:16px; border-radius:50%; border:3px solid white; box-shadow:0 0 10px #00f0ff;"></div>',
+        html: '<div style="background:#00f0ff; width:18px; height:18px; border-radius:50%; border:3px solid white; box-shadow:0 0 10px #00f0ff;"></div>',
         iconSize: [20, 20]
     });
 
@@ -86,33 +87,24 @@
         });
     }
 
-    // Auto-refresh camera stream if connection resets
-    const imgEl = document.getElementById('camera-stream');
-    imgEl.onerror = () => {
-        setTimeout(() => { imgEl.src = "/video_feed?" + new Date().getTime(); }, 2000);
-    };
-
-    // Main Telemetry & Position Loop (Polls every 800ms)
     setInterval(() => {
         fetch('/api/telemetry')
             .then(res => res.json())
             .then(data => {
                 document.getElementById('rover-status').innerText = data.rover_status;
-                document.getElementById('distance-km').innerText = data.distance_traveled_km + ' KM';
+                document.getElementById('distance-km').innerText = data.distance_traveled_km + ' / ' + data.target_km + ' km';
                 document.getElementById('potholes-count').innerText = data.total_potholes;
-                document.getElementById('material-kg').innerText = data.total_material_kg + ' KG';
+                document.getElementById('material-kg').innerText = data.total_material_kg + ' kg';
 
                 const newLatLng = [data.current_lat, data.current_lng];
                 roverMarker.setLatLng(newLatLng);
                 map.panTo(newLatLng);
 
-                // Clear old markers if mission resets
                 if (data.detections.length === 0 && potholeMarkers.length > 0) {
                     potholeMarkers.forEach(m => map.removeLayer(m));
                     potholeMarkers = [];
                 }
 
-                // Plot potholes
                 if (data.detections.length > potholeMarkers.length) {
                     data.detections.slice(potholeMarkers.length).forEach(det => {
                         const m = L.circleMarker([det.lat, det.lng], {
@@ -123,7 +115,8 @@
                         potholeMarkers.push(m);
                     });
                 }
-            });
+            })
+            .catch(err => console.log('Telemetry syncing...'));
     }, 800);
 </script>
 
