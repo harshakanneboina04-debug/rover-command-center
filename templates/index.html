@@ -30,15 +30,15 @@
 
     <div class="card">
         <label style="font-size: 0.85rem; font-weight: bold;">SET TARGET RANGE</label>
-        <select id="target-km" onchange="resetMission()" style="width: 100%; padding: 8px; margin-top: 5px; background: #1e293b; color: white; border: 1px solid #475569; border-radius: 4px;">
+        <select id="target-km" onchange="updateConfig()" style="width: 100%; padding: 8px; margin-top: 5px; background: #1e293b; color: white; border: 1px solid #475569; border-radius: 4px;">
             <option value="0.05">0.05 km (50m - Quick Demo)</option>
             <option value="0.5">0.5 km</option>
             <option value="1.0">1.0 km</option>
         </select>
         <div class="btn-group">
-            <button class="btn-start" onclick="startMission()">▶ START</button>
-            <button class="btn-pause" onclick="pauseMission()">⏸ PAUSE</button>
-            <button class="btn-stop" onclick="resetMission()">⏹ STOP</button>
+            <button class="btn-start" onclick="sendControl('START')">▶ START</button>
+            <button class="btn-pause" onclick="sendControl('PAUSE')">⏸ PAUSE</button>
+            <button class="btn-stop" onclick="sendControl('STOP')">⏹ STOP</button>
         </div>
     </div>
 
@@ -63,22 +63,11 @@
         iconSize: [20, 20]
     });
 
-    const waypoints = [
-        [17.3850, 78.4867], [17.3851, 78.4869], [17.3852, 78.4871], 
-        [17.3853, 78.4873], [17.3854, 78.4875], [17.3855, 78.4877],
-        [17.3856, 78.4879], [17.3857, 78.4881], [17.3858, 78.4883]
-    ];
-
-    let roverMarker = L.marker(waypoints[0], {icon: roverIcon}).addTo(map);
+    let roverMarker = L.marker([17.3850, 78.4867], {icon: roverIcon}).addTo(map);
     let potholeMarkers = [];
+    let isPatrolling = false;
 
-    let isRunning = false;
-    let step = 0;
-    let distanceCovered = 0.0;
-    let potholesCount = 0;
-    let materialUsed = 0.0;
-    let isReturning = false;
-
+    // HUD Canvas Animation
     const canvas = document.getElementById('video-canvas');
     const ctx = canvas.getContext('2d');
     let frameOffset = 0;
@@ -94,7 +83,7 @@
         ctx.moveTo(220, 180); ctx.lineTo(180, 0);
         ctx.stroke();
 
-        if (isRunning) {
+        if (isPatrolling) {
             frameOffset = (frameOffset + 4) % 40;
         }
 
@@ -111,84 +100,66 @@
         ctx.font = '12px sans-serif';
         ctx.fillText('LIVE CLOUD VISION FEED', 10, 20);
 
-        if (isRunning && Math.random() < 0.15 && !isReturning) {
+        if (isPatrolling && Math.random() < 0.2) {
             ctx.strokeStyle = '#ef4444';
             ctx.lineWidth = 2;
             ctx.strokeRect(110, 70, 100, 50);
             ctx.fillStyle = '#ef4444';
-            ctx.fillText('POTHOLE [91%]', 110, 65);
+            ctx.fillText('POTHOLE DETECTED', 110, 65);
         }
 
         requestAnimationFrame(drawVideoFrame);
     }
     drawVideoFrame();
 
-    function startMission() { isRunning = true; }
-    function pauseMission() { isRunning = false; updateUI("PAUSED"); }
-    
-    function resetMission() {
-        isRunning = false;
-        step = 0;
-        distanceCovered = 0.0;
-        potholesCount = 0;
-        materialUsed = 0.0;
-        isReturning = false;
-        potholeMarkers.forEach(m => map.removeLayer(m));
-        potholeMarkers = [];
-        roverMarker.setLatLng(waypoints[0]);
-        map.panTo(waypoints[0]);
-        updateUI("READY");
+    // Matching API Calls
+    function sendControl(cmd) {
+        fetch('/api/control', {
+            method: 'POST',
+            headers: {'Content-Type': 'application/json'},
+            body: JSON.stringify({command: cmd})
+        });
     }
 
-    function updateUI(statusText) {
-        const targetKm = parseFloat(document.getElementById('target-km').value);
-        document.getElementById('rover-status').innerText = statusText;
-        document.getElementById('distance-km').innerText = `${distanceCovered.toFixed(3)} / ${targetKm} km`;
-        document.getElementById('potholes-count').innerText = potholesCount;
-        document.getElementById('material-kg').innerText = `${materialUsed.toFixed(2)} kg`;
+    function updateConfig() {
+        const val = document.getElementById('target-km').value;
+        fetch('/api/config', {
+            method: 'POST',
+            headers: {'Content-Type': 'application/json'},
+            body: JSON.stringify({target_km: val})
+        });
     }
 
+    // Telemetry Polling
     setInterval(() => {
-        if (!isRunning) return;
+        fetch('/api/telemetry')
+            .then(res => res.json())
+            .then(data => {
+                isPatrolling = (data.rover_status === "PATROL_ACTIVE" || data.rover_status === "RETURNING_TO_BASE");
+                
+                document.getElementById('rover-status').innerText = data.rover_status;
+                document.getElementById('distance-km').innerText = `${data.distance_traveled_km} / ${data.target_km} km`;
+                document.getElementById('potholes-count').innerText = data.total_potholes;
+                document.getElementById('material-kg').innerText = `${data.total_material_kg} kg`;
 
-        const targetKm = parseFloat(document.getElementById('target-km').value);
-        const kmStep = targetKm / 8.0;
+                const pos = [data.current_lat, data.current_lng];
+                roverMarker.setLatLng(pos);
+                map.panTo(pos);
 
-        if (!isReturning) {
-            step = Math.min(step + 1, waypoints.length - 1);
-            distanceCovered = Math.min(distanceCovered + kmStep, targetKm);
-            
-            if (Math.random() > 0.4 && step < waypoints.length - 1) {
-                potholesCount++;
-                const addedMat = parseFloat((Math.random() * 0.8 + 0.4).toFixed(2));
-                materialUsed += addedMat;
+                if (data.detections.length === 0 && potholeMarkers.length > 0) {
+                    potholeMarkers.forEach(m => map.removeLayer(m));
+                    potholeMarkers = [];
+                }
 
-                const pMarker = L.circleMarker(waypoints[step], {
-                    color: '#22c55e', radius: 8, fillOpacity: 0.8
-                }).addTo(map).bindPopup(`Repaired: ${addedMat} kg material`);
-                potholeMarkers.push(pMarker);
-            }
-
-            if (distanceCovered >= targetKm || step >= waypoints.length - 1) {
-                isReturning = true;
-                updateUI("RETURNING TO BASE");
-            } else {
-                updateUI("PATROL ACTIVE");
-            }
-        } else {
-            step = Math.max(step - 1, 0);
-            distanceCovered = Math.max(distanceCovered - kmStep, 0.0);
-
-            if (step === 0 || distanceCovered <= 0) {
-                isRunning = false;
-                updateUI("COMPLETED");
-            } else {
-                updateUI("RETURNING TO BASE");
-            }
-        }
-
-        roverMarker.setLatLng(waypoints[step]);
-        map.panTo(waypoints[step]);
+                if (data.detections.length > potholeMarkers.length) {
+                    data.detections.slice(potholeMarkers.length).forEach(det => {
+                        const m = L.circleMarker([det.lat, det.lng], {
+                            color: '#22c55e', radius: 8, fillOpacity: 0.8
+                        }).addTo(map);
+                        potholeMarkers.push(m);
+                    });
+                }
+            });
     }, 1000);
 </script>
 
