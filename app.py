@@ -16,19 +16,21 @@ dashboard_data = {
     "step_idx": 0,
     "returning": False,
     "avoiding_obstacle": False,
+    "camera_active": False,
     "detections": []
 }
 
+# Accurate waypoints following Venkatapur Road
 WAYPOINTS = [
-    (17.4208, 78.6562),
-    (17.4215, 78.6570),
-    (17.4222, 78.6578),
-    (17.4230, 78.6586),
-    (17.4238, 78.6594),
-    (17.4245, 78.6602),
-    (17.4253, 78.6610),
-    (17.4260, 78.6618),
-    (17.4268, 78.6626)
+    (17.4208, 78.6562), # Near Anurag Main Entrance (Venkatapur Rd)
+    (17.4218, 78.6568), # Along Venkatapur Rd North-East
+    (17.4227, 78.6575), 
+    (17.4236, 78.6582), 
+    (17.4245, 78.6590), 
+    (17.4254, 78.6598), 
+    (17.4263, 78.6606), 
+    (17.4272, 78.6614), 
+    (17.4281, 78.6622)  # Venkatapur Road Junction
 ]
 
 @app.route('/')
@@ -48,13 +50,13 @@ def handle_control():
     
     if cmd == 'START':
         dashboard_data['control_state'] = 'RUNNING'
+        dashboard_data['camera_active'] = True
         if dashboard_data['rover_status'] in ['READY', 'COMPLETED', 'STOPPED']:
             dashboard_data['rover_status'] = 'PATROL_ACTIVE'
     elif cmd == 'PAUSE':
         dashboard_data['control_state'] = 'PAUSED'
         dashboard_data['rover_status'] = 'PATROL_PAUSED'
     elif cmd == 'STOP':
-        # Initiates controlled return instead of an instant hard reset
         if dashboard_data['step_idx'] > 0:
             dashboard_data['control_state'] = 'RUNNING'
             dashboard_data['returning'] = True
@@ -62,6 +64,7 @@ def handle_control():
         else:
             dashboard_data['control_state'] = 'STOPPED'
             dashboard_data['rover_status'] = 'STOPPED'
+            dashboard_data['camera_active'] = False
             dashboard_data['distance_traveled_km'] = 0.0
             dashboard_data['total_potholes'] = 0
             dashboard_data['total_material_kg'] = 0.0
@@ -120,6 +123,7 @@ def handle_telemetry():
                 dashboard_data['rover_status'] = "COMPLETED"
                 dashboard_data['control_state'] = "STOPPED"
                 dashboard_data['returning'] = False
+                dashboard_data['camera_active'] = False
 
     return jsonify(dashboard_data)
 
