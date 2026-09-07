@@ -1,127 +1,138 @@
-import os
-import random
-from flask import Flask, render_template, request, jsonify
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <title>Rover GIS Command Center</title>
+    <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
+    <style>
+        * { box-sizing: border-box; }
+        body { margin: 0; padding: 0; background-color: #0f172a; color: #f8fafc; font-family: sans-serif; display: flex; height: 100vh; overflow: hidden; }
+        #sidebar { width: 360px; padding: 15px; display: flex; flex-direction: column; gap: 12px; background: #1e293b; z-index: 1000; overflow-y: auto; }
+        #map { flex-grow: 1; height: 100%; }
+        .card { background: #0f172a; padding: 12px; border-radius: 8px; border: 1px solid #334155; }
+        #webcam-feed { width: 100%; height: 180px; background: #000; border-radius: 6px; border: 1px solid #475569; object-fit: cover; display: block; }
+        .btn-group { display: flex; gap: 8px; margin-top: 10px; }
+        button { flex: 1; padding: 10px; border: none; border-radius: 4px; font-weight: bold; cursor: pointer; color: white; }
+        .btn-start { background: #22c55e; }
+        .btn-pause { background: #eab308; }
+        .btn-stop { background: #ef4444; }
+        .stat { font-size: 1.1rem; font-weight: bold; color: #38bdf8; margin-top: 4px; }
+        .warning-box { background: #ef4444; color: white; padding: 8px; border-radius: 4px; font-weight: bold; text-align: center; display: none; margin-top: 8px; }
+    </style>
+</head>
+<body>
 
-app = Flask(__name__)
-
-dashboard_data = {
-    "rover_status": "READY",
-    "control_state": "STOPPED",
-    "target_km": 10.0,
-    "distance_traveled_km": 0.0,
-    "total_potholes": 0,
-    "total_material_kg": 0.0,
-    "current_lat": 17.4208,
-    "current_lng": 78.6562,
-    "step_idx": 0,
-    "returning": False,
-    "avoiding_obstacle": False,
-    "detections": []
-}
-
-WAYPOINTS = [
-    (17.4208, 78.6562),
-    (17.4215, 78.6570),
-    (17.4222, 78.6578),
-    (17.4230, 78.6586),
-    (17.4238, 78.6594),
-    (17.4245, 78.6602),
-    (17.4253, 78.6610),
-    (17.4260, 78.6618),
-    (17.4268, 78.6626)
-]
-
-@app.route('/')
-def index():
-    return render_template('index.html')
-
-@app.route('/api/config', methods=['POST'])
-def handle_config():
-    data = request.json or {}
-    dashboard_data['target_km'] = float(data.get('target_km', 10.0))
-    return jsonify({"status": "success", "target_km": dashboard_data['target_km']})
-
-@app.route('/api/control', methods=['POST'])
-def handle_control():
-    data = request.json or {}
-    cmd = data.get('command')
+<div id="sidebar">
+    <h3 style="margin:0 0 5px 0;">ROVER GIS LIVE TRACKING</h3>
     
-    if cmd == 'START':
-        dashboard_data['control_state'] = 'RUNNING'
-        if dashboard_data['rover_status'] in ['READY', 'COMPLETED', 'STOPPED']:
-            dashboard_data['rover_status'] = 'PATROL_ACTIVE'
-    elif cmd == 'PAUSE':
-        dashboard_data['control_state'] = 'PAUSED'
-        dashboard_data['rover_status'] = 'PATROL_PAUSED'
-    elif cmd == 'STOP':
-        # Initiates controlled return instead of an instant hard reset
-        if dashboard_data['step_idx'] > 0:
-            dashboard_data['control_state'] = 'RUNNING'
-            dashboard_data['returning'] = True
-            dashboard_data['rover_status'] = 'ABORT_RETURNING'
-        else:
-            dashboard_data['control_state'] = 'STOPPED'
-            dashboard_data['rover_status'] = 'STOPPED'
-            dashboard_data['distance_traveled_km'] = 0.0
-            dashboard_data['total_potholes'] = 0
-            dashboard_data['total_material_kg'] = 0.0
-            dashboard_data['detections'] = []
-            dashboard_data['current_lat'] = 17.4208
-            dashboard_data['current_lng'] = 78.6562
-            dashboard_data['step_idx'] = 0
-            dashboard_data['returning'] = False
-            dashboard_data['avoiding_obstacle'] = False
-        
-    return jsonify({"status": "success", "control_state": dashboard_data['control_state']})
+    <div class="card">
+        <video id="webcam-feed" autoplay playsinline muted></video>
+        <div id="warning-alert" class="warning-box">⚠️ DETOUR: AVOIDING POTHOLE</div>
+    </div>
 
-@app.route('/api/telemetry', methods=['GET'])
-def handle_telemetry():
-    if dashboard_data['control_state'] == 'RUNNING':
-        target_km = dashboard_data['target_km']
-        km_increment = round(target_km / 8.0, 3)
+    <div class="card">
+        <label style="font-size: 0.85rem; font-weight: bold;">SET TARGET RANGE</label>
+        <select id="target-km" onchange="updateConfig()" style="width: 100%; padding: 8px; margin-top: 5px; background: #1e293b; color: white; border: 1px solid #475569; border-radius: 4px;">
+            <option value="0.05">0.05 km (50m - Quick Demo)</option>
+            <option value="0.5">0.5 km</option>
+            <option value="1.0">1.0 km</option>
+            <option value="5.0">5.0 km</option>
+            <option value="10.0" selected>10.0 km</option>
+        </select>
+        <div class="btn-group">
+            <button class="btn-start" onclick="sendControl('START')">▶ START</button>
+            <button class="btn-pause" onclick="sendControl('PAUSE')">⏸ PAUSE</button>
+            <button class="btn-stop" onclick="sendControl('STOP')">⏹ ABORT & RETURN</button>
+        </div>
+    </div>
 
-        if not dashboard_data['returning']:
-            dashboard_data['avoiding_obstacle'] = False
-            dashboard_data['distance_traveled_km'] = round(dashboard_data['distance_traveled_km'] + km_increment, 3)
-            dashboard_data['step_idx'] = min(dashboard_data['step_idx'] + 1, len(WAYPOINTS) - 1)
-            curr_lat, curr_lng = WAYPOINTS[dashboard_data['step_idx']]
+    <div class="card">
+        <div style="font-size: 0.9rem;">STATUS: <span id="rover-status" class="stat">READY</span></div>
+        <div style="margin-top: 8px; font-size: 0.9rem;">DISTANCE COVERED: <br><span id="distance-km" class="stat">0 / 10.0 km</span></div>
+        <div style="margin-top: 8px; font-size: 0.9rem;">NO. OF HOLES: <br><span id="potholes-count" class="stat">0</span></div>
+        <div style="margin-top: 8px; font-size: 0.9rem;">MATERIAL USED: <br><span id="material-kg" class="stat">0 kg</span></div>
+    </div>
+</div>
 
-            dashboard_data['current_lat'] = curr_lat
-            dashboard_data['current_lng'] = curr_lng
+<div id="map"></div>
 
-            if random.choice([True, False]):
-                mat = round(random.uniform(0.3, 0.8), 2)
-                dashboard_data['total_potholes'] += 1
-                dashboard_data['total_material_kg'] = round(dashboard_data['total_material_kg'] + mat, 2)
-                dashboard_data['detections'].append({"lat": curr_lat, "lng": curr_lng, "mat": mat, "step": dashboard_data['step_idx']})
+<script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+<script>
+    const map = L.map('map').setView([17.4208, 78.6562], 17);
+    L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', { maxZoom: 19 }).addTo(map);
 
-            if dashboard_data['distance_traveled_km'] >= target_km or dashboard_data['step_idx'] >= len(WAYPOINTS) - 1:
-                dashboard_data['distance_traveled_km'] = target_km
-                dashboard_data['returning'] = True
-                dashboard_data['rover_status'] = "RETURNING_TO_BASE"
-            else:
-                dashboard_data['rover_status'] = "PATROL_ACTIVE"
-        else:
-            dashboard_data['distance_traveled_km'] = round(max(0.0, dashboard_data['distance_traveled_km'] - km_increment), 3)
-            dashboard_data['step_idx'] = max(0, dashboard_data['step_idx'] - 1)
-            base_lat, base_lng = WAYPOINTS[dashboard_data['step_idx']]
+    const roverIcon = L.divIcon({
+        className: 'custom-rover',
+        html: '<div style="background:#00f0ff; width:18px; height:18px; border-radius:50%; border:3px solid white; box-shadow:0 0 10px #00f0ff;"></div>',
+        iconSize: [20, 20]
+    });
 
-            recorded_steps = [d['step'] for d in dashboard_data['detections']]
-            if dashboard_data['step_idx'] in recorded_steps:
-                dashboard_data['current_lat'] = round(base_lat + 0.0003, 4)
-                dashboard_data['current_lng'] = base_lng
-                dashboard_data['avoiding_obstacle'] = True
-            else:
-                dashboard_data['current_lat'] = base_lat
-                dashboard_data['current_lng'] = base_lng
-                dashboard_data['avoiding_obstacle'] = False
+    let roverMarker = L.marker([17.4208, 78.6562], {icon: roverIcon}).addTo(map);
+    let potholeMarkers = [];
 
-            if dashboard_data['distance_traveled_km'] <= 0.0 or dashboard_data['step_idx'] <= 0:
-                dashboard_data['rover_status'] = "COMPLETED"
-                dashboard_data['control_state'] = "STOPPED"
-                dashboard_data['returning'] = False
+    async function startWebcam() {
+        try {
+            const stream = await navigator.mediaDevices.getUserMedia({ video: true, audio: false });
+            document.getElementById('webcam-feed').srcObject = stream;
+        } catch (err) {
+            console.error("Webcam permission denied or device not found:", err);
+        }
+    }
+    startWebcam();
 
-    return jsonify(dashboard_data)
+    function sendControl(cmd) {
+        fetch('/api/control', {
+            method: 'POST',
+            headers: {'Content-Type': 'application/json'},
+            body: JSON.stringify({command: cmd})
+        });
+    }
 
-if __name__ == '__main__':
-    app.run(host='0.0.0.0', port=5000)
+    function updateConfig() {
+        const val = document.getElementById('target-km').value;
+        fetch('/api/config', {
+            method: 'POST',
+            headers: {'Content-Type': 'application/json'},
+            body: JSON.stringify({target_km: val})
+        });
+    }
+
+    setInterval(() => {
+        fetch('/api/telemetry')
+            .then(res => res.json())
+            .then(data => {
+                document.getElementById('rover-status').innerText = data.rover_status;
+                document.getElementById('distance-km').innerText = `${data.distance_traveled_km} / ${data.target_km} km`;
+                document.getElementById('potholes-count').innerText = data.total_potholes;
+                document.getElementById('material-kg').innerText = `${data.total_material_kg} kg`;
+
+                const warningBox = document.getElementById('warning-alert');
+                if (data.avoiding_obstacle) {
+                    warningBox.style.display = 'block';
+                } else {
+                    warningBox.style.display = 'none';
+                }
+
+                const pos = [data.current_lat, data.current_lng];
+                roverMarker.setLatLng(pos);
+                map.panTo(pos);
+
+                if (data.detections.length === 0 && potholeMarkers.length > 0) {
+                    potholeMarkers.forEach(m => map.removeLayer(m));
+                    potholeMarkers = [];
+                }
+
+                if (data.detections.length > potholeMarkers.length) {
+                    data.detections.slice(potholeMarkers.length).forEach(det => {
+                        const m = L.circleMarker([det.lat, det.lng], {
+                            color: '#22c55e', radius: 8, fillOpacity: 0.8
+                        }).addTo(map);
+                        potholeMarkers.push(m);
+                    });
+                }
+            });
+    }, 1000);
+</script>
+
+</body>
+</html>
