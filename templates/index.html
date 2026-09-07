@@ -10,7 +10,51 @@
         #sidebar { width: 360px; padding: 15px; display: flex; flex-direction: column; gap: 12px; background: #1e293b; z-index: 1000; overflow-y: auto; }
         #map { flex-grow: 1; height: 100%; }
         .card { background: #0f172a; padding: 12px; border-radius: 8px; border: 1px solid #334155; }
-        #webcam-feed { width: 100%; height: 180px; background: #000; border-radius: 6px; border: 1px solid #475569; object-fit: cover; display: block; }
+        
+        .cam-wrapper {
+            position: relative;
+            width: 100%;
+            height: 180px;
+            background: #000;
+            border-radius: 6px;
+            border: 1px solid #475569;
+            overflow: hidden;
+        }
+
+        #webcam-feed {
+            width: 100%;
+            height: 100%;
+            object-fit: cover;
+            display: block;
+            opacity: 0;
+            transform: scale(1.1);
+            transition: opacity 0.8s ease-in-out, transform 0.8s ease-in-out;
+        }
+
+        #webcam-feed.active {
+            opacity: 1;
+            transform: scale(1);
+        }
+
+        .cam-overlay {
+            position: absolute;
+            top: 0; left: 0; width: 100%; height: 100%;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            background: rgba(15, 23, 42, 0.85);
+            color: #94a3b8;
+            font-size: 0.85rem;
+            font-weight: bold;
+            letter-spacing: 1px;
+            transition: opacity 0.5s ease;
+            pointer-events: none;
+        }
+
+        .cam-overlay.hidden {
+            opacity: 0;
+        }
+
         .btn-group { display: flex; gap: 8px; margin-top: 10px; }
         button { flex: 1; padding: 10px; border: none; border-radius: 4px; font-weight: bold; cursor: pointer; color: white; }
         .btn-start { background: #22c55e; }
@@ -26,7 +70,10 @@
     <h3 style="margin:0 0 5px 0;">ROVER GIS LIVE TRACKING</h3>
     
     <div class="card">
-        <video id="webcam-feed" autoplay playsinline muted></video>
+        <div class="cam-wrapper">
+            <video id="webcam-feed" autoplay playsinline muted></video>
+            <div id="cam-status" class="cam-overlay">📷 CAMERA OFFLINE</div>
+        </div>
         <div id="warning-alert" class="warning-box">⚠️ DETOUR: AVOIDING POTHOLE</div>
     </div>
 
@@ -69,16 +116,30 @@
 
     let roverMarker = L.marker([17.4208, 78.6562], {icon: roverIcon}).addTo(map);
     let potholeMarkers = [];
+    let mediaStream = null;
 
-    async function startWebcam() {
+    async function initCamera() {
         try {
-            const stream = await navigator.mediaDevices.getUserMedia({ video: true, audio: false });
-            document.getElementById('webcam-feed').srcObject = stream;
+            mediaStream = await navigator.mediaDevices.getUserMedia({ video: true, audio: false });
+            document.getElementById('webcam-feed').srcObject = mediaStream;
         } catch (err) {
-            console.error("Webcam permission denied or device not found:", err);
+            console.error("Camera access error:", err);
         }
     }
-    startWebcam();
+    initCamera();
+
+    function setCameraState(active) {
+        const videoElem = document.getElementById('webcam-feed');
+        const overlay = document.getElementById('cam-status');
+        
+        if (active) {
+            videoElem.classList.add('active');
+            overlay.classList.add('hidden');
+        } else {
+            videoElem.classList.remove('active');
+            overlay.classList.remove('hidden');
+        }
+    }
 
     function sendControl(cmd) {
         fetch('/api/control', {
@@ -105,6 +166,8 @@
                 document.getElementById('distance-km').innerText = `${data.distance_traveled_km} / ${data.target_km} km`;
                 document.getElementById('potholes-count').innerText = data.total_potholes;
                 document.getElementById('material-kg').innerText = `${data.total_material_kg} kg`;
+
+                setCameraState(data.camera_active);
 
                 const warningBox = document.getElementById('warning-alert');
                 if (data.avoiding_obstacle) {
