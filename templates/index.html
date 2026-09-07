@@ -1,0 +1,237 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <title>Rover GIS Command Center</title>
+  <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
+  <style>
+    :root {
+      --bg-main: #0b0f19;
+      --bg-card: #151c2c;
+      --border: #28344e;
+      --text-white: #f1f5f9;
+      --text-gray: #94a3b8;
+      --cyan: #38bdf8;
+      --green: #22c55e;
+      --orange: #f97316;
+      --purple: #a855f7;
+      --red: #ef4444;
+    }
+
+    * { box-sizing: border-box; margin: 0; padding: 0; font-family: 'Segoe UI', sans-serif; }
+    body { background-color: var(--bg-main); color: var(--text-white); display: flex; height: 100vh; overflow: hidden; }
+
+    .sidebar {
+      width: 420px;
+      background-color: var(--bg-main);
+      border-right: 1px solid var(--border);
+      padding: 16px;
+      display: flex;
+      flex-direction: column;
+      gap: 12px;
+      z-index: 1000;
+      overflow-y: auto;
+    }
+
+    .title { font-size: 1.1rem; font-weight: 700; border-bottom: 1px solid var(--border); padding-bottom: 8px; }
+    .title span { color: var(--cyan); }
+
+    /* EMBEDDED CAMERA FEED CONTAINER */
+    .video-card {
+      background-color: var(--bg-card);
+      border: 1px solid var(--border);
+      border-radius: 8px;
+      padding: 8px;
+      text-align: center;
+    }
+    .video-card img {
+      width: 100%;
+      height: 200px;
+      border-radius: 6px;
+      object-fit: cover;
+      background-color: #000;
+    }
+
+    .control-box {
+      background-color: var(--bg-card);
+      border: 1px solid var(--border);
+      border-radius: 8px;
+      padding: 12px;
+      display: flex;
+      flex-direction: column;
+      gap: 8px;
+    }
+    .control-box label { font-size: 0.75rem; text-transform: uppercase; color: var(--text-gray); font-weight: 600; }
+    .control-box select {
+      padding: 8px;
+      border-radius: 6px;
+      border: 1px solid var(--border);
+      background-color: var(--bg-main);
+      color: var(--text-white);
+      font-weight: 600;
+    }
+
+    .btn-group { display: grid; grid-template-columns: repeat(3, 1fr); gap: 8px; margin-top: 4px; }
+    .btn-group button {
+      padding: 10px; border: none; border-radius: 6px; font-weight: 700; font-size: 0.8rem; cursor: pointer; color: #fff;
+    }
+    .btn-start { background-color: var(--green); }
+    .btn-pause { background-color: var(--orange); }
+    .btn-stop { background-color: var(--red); }
+
+    #status-banner {
+      background-color: #1e293b;
+      border: 1px solid var(--border);
+      border-radius: 8px;
+      padding: 10px;
+      font-size: 0.85rem;
+      font-weight: 700;
+      color: var(--cyan);
+      text-align: center;
+    }
+
+    .metrics-grid { display: grid; grid-template-columns: repeat(2, 1fr); gap: 8px; }
+    .card { background-color: var(--bg-card); border: 1px solid var(--border); border-radius: 8px; padding: 8px; }
+    .card h4 { font-size: 0.65rem; text-transform: uppercase; color: var(--text-gray); margin-bottom: 2px; }
+    .card p { font-size: 1rem; font-weight: 700; }
+
+    .card.dist p { color: var(--cyan); }
+    .card.holes p { color: var(--orange); }
+    .card.material p { color: #facc15; }
+    .card.time p { color: var(--purple); }
+
+    #map { flex-grow: 1; height: 100vh; background-color: #111; }
+
+    .leaflet-tile { filter: brightness(0.6) invert(1) contrast(3) hue-rotate(200deg) saturate(0.3) brightness(0.7); }
+    .rover-icon-div {
+      background: #f97316; border: 3px solid #ffffff; border-radius: 50%;
+      width: 28px; height: 28px; display: flex; align-items: center; justify-content: center;
+      box-shadow: 0 0 12px #f97316; font-size: 14px;
+    }
+  </style>
+</head>
+<body>
+
+  <div class="sidebar">
+    <div class="title">🤖 <span>ROVER</span> GIS Live Tracking</div>
+
+    <!-- Embedded Camera Feed -->
+    <div class="video-card">
+      <img src="/video_feed" alt="Rover Live Camera Feed Stream" />
+    </div>
+
+    <div class="control-box">
+      <label for="distance-select">Set Target Range (Up to 10 km)</label>
+      <select id="distance-select" onchange="setTargetDistance()">
+        <option value="0.05">0.05 km (50m - Quick Demo)</option>
+        <option value="0.5">0.50 km (500m)</option>
+        <option value="1.0">1.00 km</option>
+        <option value="2.5">2.50 km</option>
+        <option value="5.0">5.00 km</option>
+        <option value="10.0">10.00 km</option>
+      </select>
+
+      <div class="btn-group">
+        <button class="btn-start" onclick="sendControl('START')">▶ START</button>
+        <button class="btn-pause" onclick="sendControl('PAUSE')">⏸ PAUSE</button>
+        <button class="btn-stop" onclick="sendControl('STOP')">⏹ STOP</button>
+      </div>
+    </div>
+
+    <div id="status-banner">STATUS: Ready for Patrol</div>
+
+    <div class="metrics-grid">
+      <div class="card dist"><h4>Distance Cover</h4><p id="dist-val">0.00 / 0.05 km</p></div>
+      <div class="card holes"><h4>No. of Holes</h4><p id="holes-count">0</p></div>
+      <div class="card material"><h4>Material Used</h4><p id="material-val">0.00 kg</p></div>
+      <div class="card time"><h4>Completion Time</h4><p id="time-val">0.0 sec</p></div>
+    </div>
+  </div>
+
+  <div id="map"></div>
+
+  <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+  <script>
+    const map = L.map('map').setView([17.3850, 78.4867], 17);
+    L.tileLayer('https://tile.openstreetmap.org/{z}/{x}/{y}.png', { maxZoom: 19 }).addTo(map);
+
+    const roverIcon = L.divIcon({ className: 'rover-icon-div', html: '🤖', iconSize: [28, 28], iconAnchor: [14, 14] });
+    let roverMarker = L.marker([17.3850, 78.4867], { icon: roverIcon }).addTo(map);
+    let trailGroup = L.layerGroup().addTo(map);
+    let potholeGroup = L.layerGroup().addTo(map);
+    let plottedPotholes = new Set();
+    let lastDotTime = 0;
+
+    async function setTargetDistance() {
+      const selectedKm = parseFloat(document.getElementById('distance-select').value);
+      await fetch('/api/config', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ target_km: selectedKm })
+      });
+    }
+
+    async function sendControl(action) {
+      await fetch('/api/control', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ command: action })
+      });
+      if (action === 'STOP') {
+        trailGroup.clearLayers();
+        potholeGroup.clearLayers();
+        plottedPotholes.clear();
+      }
+    }
+
+    async function fetchTelemetry() {
+      try {
+        const res = await fetch('/api/telemetry');
+        const data = await res.json();
+
+        document.getElementById('dist-val').innerText = `${data.distance_traveled_km} / ${data.target_km} km`;
+        document.getElementById('holes-count').innerText = data.total_potholes;
+        document.getElementById('material-val').innerText = `${data.total_material_kg} kg`;
+        document.getElementById('time-val').innerText = `${data.last_completion_time_sec} sec`;
+
+        if (data.current_lat && data.current_lng) {
+          const newLatLng = [data.current_lat, data.current_lng];
+          roverMarker.setLatLng(newLatLng);
+          map.panTo(newLatLng);
+
+          // 3-second dot trail marker
+          const now = Date.now();
+          if ((data.rover_status === "PATROL_ACTIVE" || data.rover_status === "RETURNING_TO_START") && data.control_state === "RUNNING") {
+            if (now - lastDotTime >= 3000) {
+              L.circleMarker(newLatLng, { color: '#38bdf8', fillColor: '#0284c7', fillOpacity: 0.9, radius: 4 }).addTo(trailGroup);
+              lastDotTime = now;
+            }
+          }
+        }
+
+        const banner = document.getElementById('status-banner');
+        if (data.control_state === "PAUSED") {
+          banner.innerText = "⏸ PATROL PAUSED"; banner.style.backgroundColor = "#7c2d12"; banner.style.color = "#fdba74";
+        } else if (data.rover_status === "RETURNING_TO_START") {
+          banner.innerText = "🚨 TARGET REACHED! RETURNING TO STARTING POINT..."; banner.style.backgroundColor = "#7f1d1d"; banner.style.color = "#f87171";
+        } else if (data.rover_status === "COMPLETED") {
+          banner.innerText = "✅ PATROL & RETURN COMPLETED!"; banner.style.backgroundColor = "#14532d"; banner.style.color = "#4ade80";
+        } else if (data.rover_status === "PATROL_ACTIVE") {
+          banner.innerText = "STATUS: Patrol Active (Scanning Roads)"; banner.style.backgroundColor = "#1e293b"; banner.style.color = "#38bdf8";
+        } else {
+          banner.innerText = "STATUS: Ready for Patrol"; banner.style.backgroundColor = "#1e293b"; banner.style.color = "#38bdf8";
+        }
+
+        data.detections.forEach((det, index) => {
+          if (!plottedPotholes.has(index)) {
+            plottedPotholes.add(index);
+            L.circleMarker([det.lat, det.lng], { color: '#22c55e', fillColor: '#22c55e', fillOpacity: 0.8, radius: 7 }).addTo(potholeGroup);
+          }
+        });
+      } catch (err) { console.error(err); }
+    }
+
+    setInterval(fetchTelemetry, 1000);
+  </script>
+</body>
+</html>
