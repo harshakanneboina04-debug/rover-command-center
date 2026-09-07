@@ -12,12 +12,14 @@ dashboard_data = {
     "distance_traveled_km": 0.0,
     "total_potholes": 0,
     "total_material_kg": 0.0,
-    "current_lat": 17.3850,
-    "current_lng": 78.4867,
+    "current_lat": 17.4208,
+    "current_lng": 78.6562,
     "step_idx": 0,
     "returning": False,
+    "avoiding_obstacle": False,
     "detections": []
 }
+
 
 WAYPOINTS = [
     (17.4208, 78.6562), # Main Gate / Venkatadri Hwy
