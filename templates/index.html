@@ -54,7 +54,6 @@
 
 <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
 <script>
-    // Leaflet Map Init
     const map = L.map('map').setView([17.3850, 78.4867], 18);
     L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', { maxZoom: 19 }).addTo(map);
 
@@ -73,7 +72,6 @@
     let roverMarker = L.marker(waypoints[0], {icon: roverIcon}).addTo(map);
     let potholeMarkers = [];
 
-    // State Variables
     let isRunning = false;
     let step = 0;
     let distanceCovered = 0.0;
@@ -81,7 +79,6 @@
     let materialUsed = 0.0;
     let isReturning = false;
 
-    // Simulated Canvas Stream Generator
     const canvas = document.getElementById('video-canvas');
     const ctx = canvas.getContext('2d');
     let frameOffset = 0;
@@ -90,7 +87,6 @@
         ctx.fillStyle = '#1e293b';
         ctx.fillRect(0, 0, canvas.width, canvas.height);
 
-        // Draw animated road lines
         ctx.strokeStyle = '#64748b';
         ctx.lineWidth = 2;
         ctx.beginPath();
@@ -111,12 +107,11 @@
         ctx.stroke();
         ctx.setLineDash([]);
 
-        // Overlay Text
         ctx.fillStyle = '#00f0ff';
         ctx.font = '12px sans-serif';
         ctx.fillText('LIVE CLOUD VISION FEED', 10, 20);
 
-        if (isRunning && Math.random() < 0.1 && !isReturning) {
+        if (isRunning && Math.random() < 0.15 && !isReturning) {
             ctx.strokeStyle = '#ef4444';
             ctx.lineWidth = 2;
             ctx.strokeRect(110, 70, 100, 50);
@@ -128,7 +123,6 @@
     }
     drawVideoFrame();
 
-    // Mission Control Functions
     function startMission() { isRunning = true; }
     function pauseMission() { isRunning = false; updateUI("PAUSED"); }
     
@@ -154,7 +148,6 @@
         document.getElementById('material-kg').innerText = `${materialUsed.toFixed(2)} kg`;
     }
 
-    // Telemetry and Movement Interval
     setInterval(() => {
         if (!isRunning) return;
 
@@ -165,7 +158,6 @@
             step = Math.min(step + 1, waypoints.length - 1);
             distanceCovered = Math.min(distanceCovered + kmStep, targetKm);
             
-            // Random pothole detection on forward move
             if (Math.random() > 0.4 && step < waypoints.length - 1) {
                 potholesCount++;
                 const addedMat = parseFloat((Math.random() * 0.8 + 0.4).toFixed(2));
