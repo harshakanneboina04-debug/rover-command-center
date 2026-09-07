@@ -2,6 +2,7 @@
 <html lang="en">
 <head>
     <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Rover GIS Command Center</title>
     <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
     <style>
@@ -108,6 +109,22 @@
     const map = L.map('map').setView([17.4208, 78.6562], 17);
     L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', { maxZoom: 19 }).addTo(map);
 
+    // Venkatapur Road Corridor Coordinates
+    const venkatapurRoadPath = [
+        [17.4208, 78.6562],
+        [17.4216, 78.6567],
+        [17.4224, 78.6572],
+        [17.4232, 78.6577],
+        [17.4240, 78.6582],
+        [17.4248, 78.6587],
+        [17.4256, 78.6592],
+        [17.4264, 78.6597],
+        [17.4272, 78.6602]
+    ];
+
+    // Highlight the Venkatapur Road Corridor
+    L.polyline(venkatapurRoadPath, { color: '#38bdf8', weight: 5, opacity: 0.7, dashArray: '8, 8' }).addTo(map);
+
     const roverIcon = L.divIcon({
         className: 'custom-rover',
         html: '<div style="background:#00f0ff; width:18px; height:18px; border-radius:50%; border:3px solid white; box-shadow:0 0 10px #00f0ff;"></div>',
@@ -116,12 +133,11 @@
 
     let roverMarker = L.marker([17.4208, 78.6562], {icon: roverIcon}).addTo(map);
     let potholeMarkers = [];
-    let mediaStream = null;
 
     async function initCamera() {
         try {
-            mediaStream = await navigator.mediaDevices.getUserMedia({ video: true, audio: false });
-            document.getElementById('webcam-feed').srcObject = mediaStream;
+            const stream = await navigator.mediaDevices.getUserMedia({ video: true, audio: false });
+            document.getElementById('webcam-feed').srcObject = stream;
         } catch (err) {
             console.error("Camera access error:", err);
         }
