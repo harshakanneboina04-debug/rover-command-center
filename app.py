@@ -4,6 +4,18 @@ from flask import Flask, render_template, request, jsonify
 
 app = Flask(__name__)
 
+# Real road path starting at Anurag University going West on Venkatapur Road
+WAYPOINTS = [
+    (17.4210, 78.6575), # Start: Anurag University Gate
+    (17.4215, 78.6550), # Venkatapur Road
+    (17.4220, 78.6525), # Venkatapur Road
+    (17.4223, 78.6500), # Venkatapur Road
+    (17.4225, 78.6475), # Venkatapur Road
+    (17.4228, 78.6450), # Venkatapur Road
+    (17.4230, 78.6425), # Venkatapur Road towards Highway junction
+    (17.4232, 78.6400)  # Highway Junction
+]
+
 dashboard_data = {
     "rover_status": "READY",
     "control_state": "STOPPED",
@@ -11,27 +23,14 @@ dashboard_data = {
     "distance_traveled_km": 0.0,
     "total_potholes": 0,
     "total_material_kg": 0.0,
-    "current_lat": 17.4208,
-    "current_lng": 78.6562,
+    "current_lat": 17.4210,
+    "current_lng": 78.6575,
     "step_idx": 0,
     "returning": False,
     "avoiding_obstacle": False,
     "camera_active": False,
     "detections": []
 }
-
-# Strictly mapped along the center line of Venkatapur Road
-WAYPOINTS = [
-    (17.4208, 78.6562), # Start: Venkatapur Road Entrance
-    (17.4216, 78.6567), # Step 1: Venkatapur Rd
-    (17.4224, 78.6572), # Step 2: Venkatapur Rd
-    (17.4232, 78.6577), # Step 3: Venkatapur Rd
-    (17.4240, 78.6582), # Step 4: Venkatapur Rd
-    (17.4248, 78.6587), # Step 5: Venkatapur Rd
-    (17.4256, 78.6592), # Step 6: Venkatapur Rd
-    (17.4264, 78.6597), # Step 7: Venkatapur Rd
-    (17.4272, 78.6602)  # End: Venkatapur Rd Turnaround
-]
 
 @app.route('/')
 def index():
@@ -69,8 +68,8 @@ def handle_control():
             dashboard_data['total_potholes'] = 0
             dashboard_data['total_material_kg'] = 0.0
             dashboard_data['detections'] = []
-            dashboard_data['current_lat'] = 17.4208
-            dashboard_data['current_lng'] = 78.6562
+            dashboard_data['current_lat'] = 17.4210
+            dashboard_data['current_lng'] = 78.6575
             dashboard_data['step_idx'] = 0
             dashboard_data['returning'] = False
             dashboard_data['avoiding_obstacle'] = False
@@ -81,7 +80,7 @@ def handle_control():
 def handle_telemetry():
     if dashboard_data['control_state'] == 'RUNNING':
         target_km = dashboard_data['target_km']
-        km_increment = round(target_km / 8.0, 3)
+        km_increment = round(target_km / 7.0, 3)
 
         if not dashboard_data['returning']:
             dashboard_data['avoiding_obstacle'] = False
@@ -109,11 +108,11 @@ def handle_telemetry():
             dashboard_data['step_idx'] = max(0, dashboard_data['step_idx'] - 1)
             base_lat, base_lng = WAYPOINTS[dashboard_data['step_idx']]
 
-            # Keep avoidance strictly within the road lane boundaries
             recorded_steps = [d['step'] for d in dashboard_data['detections']]
             if dashboard_data['step_idx'] in recorded_steps:
-                dashboard_data['current_lat'] = round(base_lat + 0.0001, 4) # Small in-lane shift
-                dashboard_data['current_lng'] = round(base_lng - 0.0001, 4)
+                # Nudge slightly north (lane dodge) on return
+                dashboard_data['current_lat'] = round(base_lat + 0.00015, 5)
+                dashboard_data['current_lng'] = base_lng
                 dashboard_data['avoiding_obstacle'] = True
             else:
                 dashboard_data['current_lat'] = base_lat
