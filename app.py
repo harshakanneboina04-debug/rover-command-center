@@ -16,7 +16,7 @@ WAYPOINTS = [
     (17.42020, 78.65210), # Step 6: Pothole 3
     (17.42050, 78.65140), # Step 7
     (17.42080, 78.65080), # Step 8: Abort Point (~4km)
-    (17.42125, 78.65020), # Step 9: Pothole 4 (Scanning resumes here after abort)
+    (17.42125, 78.65020), # Step 9: Pothole 4
     (17.42170, 78.64960), # Step 10
     (17.42215, 78.64880), # Step 11: Pothole 5
     (17.42260, 78.64800), # Step 12
@@ -35,7 +35,7 @@ POTHOLE_STEPS = [1, 3, 6, 9, 11, 14]
 
 permanently_repaired_steps = set()
 mission_history = []
-max_step_reached = 0  # Dynamic checkpoint step for partial runs
+max_step_reached = 0
 
 active_waypoints = list(WAYPOINTS)
 
@@ -75,12 +75,16 @@ def index():
 
 @app.route('/api/config', methods=['POST'])
 def handle_config():
+    if dashboard_data['control_state'] == 'POWERED_OFF':
+        return jsonify({"status": "error", "message": "Machine is powered off."})
     data = request.json or {}
     dashboard_data['target_km'] = float(data.get('target_km', 10.0))
     return jsonify({"status": "success", "target_km": dashboard_data['target_km']})
 
 @app.route('/api/set_start', methods=['POST'])
 def set_start_location():
+    if dashboard_data['control_state'] == 'POWERED_OFF':
+        return jsonify({"status": "error", "message": "Machine is powered off."})
     if dashboard_data['control_state'] != 'RUNNING':
         data = request.json or {}
         lat = float(data.get('lat', 17.42080))
@@ -106,18 +110,38 @@ def set_start_location():
         return jsonify({"status": "success", "lat": lat, "lng": lng})
     return jsonify({"status": "error", "message": "Cannot change start location while machine is running."})
 
+@app.route('/api/clear_history', methods=['POST'])
+def clear_history():
+    global mission_history
+    mission_history.clear()
+    dashboard_data['mission_history'] = []
+    return jsonify({"status": "success", "message": "Mission history cleared."})
+
 @app.route('/api/control', methods=['POST'])
 def handle_control():
     data = request.json or {}
     cmd = data.get('command')
-    
-    if cmd == 'START':
+
+    if cmd == 'POWER_OFF':
+        dashboard_data['control_state'] = 'POWERED_OFF'
+        dashboard_data['rover_status'] = 'DISCONNECTED'
+        dashboard_data['camera_active'] = False
+        dashboard_data['returning'] = False
+        dashboard_data['avoiding_obstacle'] = False
+        dashboard_data['warning_msg'] = "🔴 MACHINE & CAMERA POWERED OFF"
+        dashboard_data['detections'] = []
+        reset_session_cache()
+
+    elif dashboard_data['control_state'] == 'POWERED_OFF' and cmd != 'STOP':
+        return jsonify({"status": "error", "message": "Machine is powered off. Power on first."})
+
+    elif cmd == 'START':
         dashboard_data['control_state'] = 'RUNNING'
         dashboard_data['camera_active'] = True
         dashboard_data['warning_msg'] = ""
         dashboard_data['mission_start_time'] = time.time()
         
-        if dashboard_data['rover_status'] in ['READY', 'COMPLETED', 'STOPPED']:
+        if dashboard_data['rover_status'] in ['READY', 'COMPLETED', 'STOPPED', 'DISCONNECTED']:
             dashboard_data['rover_status'] = 'PATROL_ACTIVE'
             dashboard_data['battery_pct'] = 100.0
             dashboard_data['material_level_pct'] = 100.0
@@ -130,7 +154,7 @@ def handle_control():
         dashboard_data['rover_status'] = 'PATROL_PAUSED'
 
     elif cmd == 'STOP':
-        if dashboard_data['step_idx'] > 0:
+        if dashboard_data['step_idx'] > 0 and dashboard_data['control_state'] == 'RUNNING':
             dashboard_data['control_state'] = 'RUNNING'
             dashboard_data['returning'] = True
             dashboard_data['rover_status'] = 'ABORT_RETURNING'
@@ -141,7 +165,7 @@ def handle_control():
             dashboard_data['warning_msg'] = "⚠️ MANUAL ABORT: RETURNING TO CUSTOM START..."
         else:
             dashboard_data['control_state'] = 'STOPPED'
-            dashboard_data['rover_status'] = 'STOPPED'
+            dashboard_data['rover_status'] = 'READY'
             dashboard_data['camera_active'] = False
             dashboard_data['distance_traveled_km'] = 0.0
             dashboard_data['current_lat'] = dashboard_data['start_lat']
@@ -159,6 +183,9 @@ def handle_control():
 def handle_telemetry():
     global max_step_reached
     
+    if dashboard_data['control_state'] == 'POWERED_OFF':
+        return jsonify(dashboard_data)
+
     if dashboard_data['control_state'] == 'RUNNING':
         target_km = dashboard_data['target_km']
         km_increment = round(target_km / 60.0, 3)
@@ -198,10 +225,8 @@ def handle_telemetry():
 
                 # --- STEP SKIP / RESUME SCAN LOGIC ---
                 if current_step <= max_step_reached and max_step_reached > 0:
-                    # Fast-forwarding through already inspected distance
                     dashboard_data['warning_msg'] = f"⏩ TRANSITING: RETURNING TO RESUME POINT (STEP {current_step}/{max_step_reached})"
                 else:
-                    # Crossed return threshold! Resume full scanning & detection.
                     if current_step in POTHOLE_STEPS and current_step not in permanently_repaired_steps:
                         mat = round(random.uniform(0.4, 0.9), 2)
                         dashboard_data['total_potholes'] += 1
@@ -267,7 +292,6 @@ def handle_telemetry():
                 mins, secs = divmod(duration_sec, 60)
                 ret_loc = dashboard_data['return_location'] or {"lat": base_lat, "lng": base_lng}
 
-                # Save history log entry
                 history_entry = {
                     "id": f"RUN-{len(mission_history) + 1:03d}",
                     "timestamp": datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
@@ -280,8 +304,6 @@ def handle_telemetry():
                 
                 mission_history.insert(0, history_entry)
                 dashboard_data['mission_history'] = mission_history
-
-                # WIPE SESSION DATA ON FULL COMPLETION (FORGETS PREVIOUS POINTS FOR FUTURE RUNS)
                 reset_session_cache()
 
     return jsonify(dashboard_data)
