@@ -8,32 +8,26 @@
     <style>
         * { box-sizing: border-box; }
         body { margin: 0; padding: 0; background-color: #0f172a; color: #f8fafc; font-family: sans-serif; display: flex; height: 100vh; overflow: hidden; }
-        #sidebar { width: 380px; padding: 15px; display: flex; flex-direction: column; gap: 12px; background: #1e293b; z-index: 1000; overflow-y: auto; }
+        
+        /* Left History Panel */
+        #history-bar { width: 320px; background: #090d16; padding: 15px; border-right: 1px solid #1e293b; display: flex; flex-direction: column; gap: 10px; overflow-y: auto; }
+        #sidebar { width: 360px; padding: 15px; display: flex; flex-direction: column; gap: 12px; background: #1e293b; z-index: 1000; overflow-y: auto; }
         #map { flex-grow: 1; height: 100%; }
+        
         .card { background: #0f172a; padding: 12px; border-radius: 8px; border: 1px solid #334155; }
         
         .cam-wrapper {
-            position: relative;
-            width: 100%;
-            height: 160px;
-            background: #000;
-            border-radius: 6px;
-            border: 1px solid #475569;
-            overflow: hidden;
+            position: relative; width: 100%; height: 150px; background: #000;
+            border-radius: 6px; border: 1px solid #475569; overflow: hidden;
         }
 
-        #webcam-feed {
-            width: 100%; height: 100%; object-fit: cover; display: block; opacity: 0;
-            transition: opacity 0.8s ease-in-out;
-        }
-
+        #webcam-feed { width: 100%; height: 100%; object-fit: cover; display: block; opacity: 0; transition: opacity 0.8s ease-in-out; }
         #webcam-feed.active { opacity: 1; }
 
         .cam-overlay {
             position: absolute; top: 0; left: 0; width: 100%; height: 100%;
             display: flex; align-items: center; justify-content: center;
-            background: rgba(15, 23, 42, 0.85); color: #94a3b8; font-size: 0.85rem; font-weight: bold;
-            pointer-events: none;
+            background: rgba(15, 23, 42, 0.85); color: #94a3b8; font-size: 0.85rem; font-weight: bold; pointer-events: none;
         }
 
         .cam-overlay.hidden { opacity: 0; }
@@ -49,25 +43,31 @@
         .bar-container { background: #334155; border-radius: 4px; height: 10px; width: 100%; margin-top: 4px; overflow: hidden; }
         .bar-fill { height: 100%; background: #22c55e; transition: width 0.5s ease; }
 
-        /* Pothole Data Table */
-        .pothole-list { max-height: 120px; overflow-y: auto; margin-top: 8px; font-size: 0.8rem; }
+        .pothole-list, .history-list { max-height: 200px; overflow-y: auto; margin-top: 8px; font-size: 0.8rem; }
         .pothole-item { display: flex; justify-content: space-between; padding: 4px 6px; background: #1e293b; border-radius: 4px; margin-bottom: 4px; border-left: 3px solid #eab308; }
+        
+        .history-item { background: #1e293b; border-radius: 6px; padding: 10px; margin-bottom: 8px; border-left: 3px solid #38bdf8; font-size: 0.78rem; }
+        .history-item div { margin-bottom: 3px; }
 
-        /* Custom Robot Icon Styling */
         .robot-marker-icon {
-            background: #0284c7;
-            border: 2px solid #ffffff;
-            border-radius: 50%;
-            display: flex;
-            align-items: center;
-            justify-content: center;
-            box-shadow: 0 0 12px #38bdf8;
-            transition: transform 0.3s ease;
+            background: #0284c7; border: 2px solid #ffffff; border-radius: 50%;
+            display: flex; align-items: center; justify-content: center;
+            box-shadow: 0 0 12px #38bdf8; transition: transform 0.3s ease;
         }
     </style>
 </head>
 <body>
 
+<!-- Left History Settings Bar -->
+<div id="history-bar">
+    <h4 style="margin:0 0 5px 0; color:#38bdf8;">📜 MISSION HISTORY</h4>
+    <div style="font-size:0.75rem; color:#94a3b8; margin-bottom:8px;">Logs date, time, duration, return coordinates & skipped repaired spots.</div>
+    <div id="history-log-list" class="history-list" style="max-height: calc(100vh - 80px);">
+        <div style="color: #64748b; font-style: italic; padding: 4px;">No previous mission records found.</div>
+    </div>
+</div>
+
+<!-- Main Control Panel -->
 <div id="sidebar">
     <h3 style="margin:0 0 5px 0;">ROVER GIS COMMAND CENTER</h3>
     
@@ -128,13 +128,10 @@
 <script>
     const map = L.map('map').setView([17.4210, 78.6560], 16);
 
-    // Google Maps Roadmap Tile Engine
     L.tileLayer('http://{s}.google.com/vt/lyrs=m&x={x}&y={y}&z={z}', {
-        maxZoom: 20,
-        subdomains: ['mt0', 'mt1', 'mt2', 'mt3']
+        maxZoom: 20, subdomains: ['mt0', 'mt1', 'mt2', 'mt3']
     }).addTo(map);
 
-    // Zomato-style Robot Icon SVG
     const robotSvg = `
     <svg width="24" height="24" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
         <rect x="5" y="7" width="14" height="12" rx="3" fill="#38bdf8" stroke="#ffffff" stroke-width="2"/>
@@ -146,10 +143,7 @@
     </svg>`;
 
     const robotIcon = L.divIcon({
-        className: 'robot-marker-icon',
-        html: robotSvg,
-        iconSize: [32, 32],
-        iconAnchor: [16, 16]
+        className: 'robot-marker-icon', html: robotSvg, iconSize: [32, 32], iconAnchor: [16, 16]
     });
 
     let roverMarker = L.marker([17.4210, 78.6560], {icon: robotIcon}).addTo(map);
@@ -227,7 +221,7 @@
                 roverMarker.setLatLng(pos);
                 map.panTo(pos);
 
-                // Render Pothole Log Panel Data
+                // Update Pothole Log
                 const logContainer = document.getElementById('pothole-log-list');
                 if (data.detections.length > 0) {
                     logContainer.innerHTML = data.detections.map(det => `
@@ -240,7 +234,20 @@
                     logContainer.innerHTML = `<div style="color: #64748b; font-style: italic; padding: 4px;">No potholes detected yet.</div>`;
                 }
 
-                // Synchronize Map Pothole Markers & Info Tooltips
+                // Update Mission History Sidebar
+                const historyContainer = document.getElementById('history-log-list');
+                if (data.mission_history && data.mission_history.length > 0) {
+                    historyContainer.innerHTML = data.mission_history.map(h => `
+                        <div class="history-item">
+                            <div style="color:#facc15; font-weight:bold;">${h.id} — ${h.timestamp}</div>
+                            <div><b>Start:</b> ${h.start_place}</div>
+                            <div><b>Return Loc:</b> ${h.return_place}</div>
+                            <div><b>Time Taken:</b> ${h.duration}</div>
+                            <div><b>Filled:</b> ${h.potholes_filled} potholes (${h.material_used})</div>
+                        </div>
+                    `).join('');
+                }
+
                 if (data.detections.length === 0 && potholeMarkers.length > 0) {
                     potholeMarkers.forEach(m => map.removeLayer(m));
                     potholeMarkers = [];
