@@ -232,8 +232,12 @@
     }
 
     function clearRedDots() {
+        // Remove markers from Leaflet map
         potholeMarkers.forEach(m => map.removeLayer(m));
         potholeMarkers = [];
+
+        // Notify server to clear backend detection data
+        fetch('/api/clear_map', { method: 'POST' });
     }
 
     function clearHistory() {
@@ -316,7 +320,8 @@
                 }
 
                 if (data.detections.length === 0 && potholeMarkers.length > 0) {
-                    clearRedDots();
+                    potholeMarkers.forEach(m => map.removeLayer(m));
+                    potholeMarkers = [];
                 }
 
                 if (data.detections.length > potholeMarkers.length) {
