@@ -7,16 +7,16 @@ from flask import Flask, render_template, request, jsonify
 app = Flask(__name__)
 
 WAYPOINTS = [
-    (17.42080, 78.65620), # Step 0: Default Start
+    (17.42080, 78.65620), # Step 0: Start
     (17.42050, 78.65540), # Step 1: Pothole 1
-    (17.42030, 78.65480), # Step 2: Vehicle 1 Obstacle
+    (17.42030, 78.65480), # Step 2: Vehicle 1
     (17.42010, 78.65410), # Step 3: Pothole 2
-    (17.42000, 78.65350),
-    (17.42010, 78.65280), # Step 5: Vehicle 2 Obstacle
+    (17.42000, 78.65350), # Step 4
+    (17.42010, 78.65280), # Step 5: Vehicle 2
     (17.42020, 78.65210), # Step 6: Pothole 3
-    (17.42050, 78.65140),
-    (17.42080, 78.65080), # Step 8: Vehicle 3 Obstacle
-    (17.42125, 78.65020), # Step 9: Pothole 4
+    (17.42050, 78.65140), # Step 7
+    (17.42080, 78.65080), # Step 8: Vehicle 3 (e.g. ~4 km mark)
+    (17.42125, 78.65020), # Step 9: Pothole 4 (After 4 km mark)
     (17.42170, 78.64960),
     (17.42215, 78.64880),
     (17.42260, 78.64800),
@@ -35,6 +35,7 @@ POTHOLE_STEPS = [1, 3, 6, 9]
 
 permanently_repaired_steps = set()
 mission_history = []
+max_step_reached = 0  # Tracks furthest point reached across runs
 
 active_waypoints = list(WAYPOINTS)
 
@@ -74,6 +75,7 @@ def handle_config():
 
 @app.route('/api/set_start', methods=['POST'])
 def set_start_location():
+    global max_step_reached
     if dashboard_data['control_state'] != 'RUNNING':
         data = request.json or {}
         lat = float(data.get('lat', 17.42080))
@@ -86,6 +88,9 @@ def set_start_location():
             d_lat = (p[0] - WAYPOINTS[0][0])
             d_lng = (p[1] - WAYPOINTS[0][1])
             active_waypoints.append((round(lat + d_lat, 5), round(lng + d_lng, 5)))
+
+        max_step_reached = 0  # Reset max progress on changing start spot
+        permanently_repaired_steps.clear()
 
         dashboard_data['start_lat'] = lat
         dashboard_data['start_lng'] = lng
@@ -114,10 +119,7 @@ def handle_control():
             dashboard_data['material_level_pct'] = 100.0
             dashboard_data['distance_traveled_km'] = 0.0
             dashboard_data['step_idx'] = 0
-            dashboard_data['detections'] = []
-            dashboard_data['total_potholes'] = 0
-            dashboard_data['total_material_kg'] = 0.0
-            dashboard_data['return_location'] = None
+            dashboard_data['returning'] = False
 
     elif cmd == 'PAUSE':
         dashboard_data['control_state'] = 'PAUSED'
@@ -138,9 +140,6 @@ def handle_control():
             dashboard_data['rover_status'] = 'STOPPED'
             dashboard_data['camera_active'] = False
             dashboard_data['distance_traveled_km'] = 0.0
-            dashboard_data['total_potholes'] = 0
-            dashboard_data['total_material_kg'] = 0.0
-            dashboard_data['detections'] = []
             dashboard_data['current_lat'] = dashboard_data['start_lat']
             dashboard_data['current_lng'] = dashboard_data['start_lng']
             dashboard_data['step_idx'] = 0
@@ -154,6 +153,8 @@ def handle_control():
 
 @app.route('/api/telemetry', methods=['GET'])
 def handle_telemetry():
+    global max_step_reached
+    
     if dashboard_data['control_state'] == 'RUNNING':
         target_km = dashboard_data['target_km']
         km_increment = round(target_km / 60.0, 3)
@@ -164,12 +165,12 @@ def handle_telemetry():
             if dashboard_data['battery_pct'] <= 20.0:
                 dashboard_data['returning'] = True
                 dashboard_data['return_location'] = {"lat": dashboard_data['current_lat'], "lng": dashboard_data['current_lng']}
-                dashboard_data['warning_msg'] = "⚠️ LOW BATTERY (<20%)! RETURNING TO CUSTOM START..."
+                dashboard_data['warning_msg'] = "⚠️ LOW BATTERY (<20%)! RETURNING TO START..."
                 dashboard_data['rover_status'] = "AUTO_RETURNING"
             elif dashboard_data['material_level_pct'] <= 15.0:
                 dashboard_data['returning'] = True
                 dashboard_data['return_location'] = {"lat": dashboard_data['current_lat'], "lng": dashboard_data['current_lng']}
-                dashboard_data['warning_msg'] = "⚠️ LOW MATERIAL (<15%)! RETURNING TO CUSTOM START..."
+                dashboard_data['warning_msg'] = "⚠️ LOW MATERIAL (<15%)! RETURNING TO START..."
                 dashboard_data['rover_status'] = "AUTO_RETURNING"
             else:
                 dashboard_data['step_idx'] = min(dashboard_data['step_idx'] + 1, len(active_waypoints) - 1)
@@ -189,36 +190,41 @@ def handle_telemetry():
                     dashboard_data['current_lng'] = base_lng
 
                 dashboard_data['distance_traveled_km'] = round(dashboard_data['distance_traveled_km'] + km_increment, 3)
-
                 current_step = dashboard_data['step_idx']
 
-                # GUARANTEED POTHOLE DETECTION AT SPECIFIC STEPS
-                if current_step in POTHOLE_STEPS and current_step not in permanently_repaired_steps:
-                    mat = round(random.uniform(0.4, 0.9), 2)
-                    dashboard_data['total_potholes'] += 1
-                    dashboard_data['total_material_kg'] = round(dashboard_data['total_material_kg'] + mat, 2)
-                    dashboard_data['material_level_pct'] = max(0.0, round(dashboard_data['material_level_pct'] - round(mat * 4, 1), 1))
-                    
-                    dashboard_data['detections'].append({
-                        "id": f"PH-{len(dashboard_data['detections']) + 1:02d}",
-                        "lat": dashboard_data['current_lat'],
-                        "lng": dashboard_data['current_lng'],
-                        "mat": mat,
-                        "step": current_step
-                    })
-                    permanently_repaired_steps.add(current_step)
-                    dashboard_data['warning_msg'] = f"🚨 POTHOLE DETECTED & REPAIRED AT STEP {current_step}!"
-                elif current_step in permanently_repaired_steps:
-                    dashboard_data['warning_msg'] = f"ℹ️ SKIPPING PREVIOUSLY FILLED POTHOLE AT STEP {current_step}"
+                # IGNORE ALREADY COVERED ROUTE (UP TO PREVIOUS MAX STEP REACHED)
+                if current_step <= max_step_reached and max_step_reached > 0:
+                    dashboard_data['warning_msg'] = f"⏩ FAST TRANSIT: IGNORING PREVIOUSLY COVERED AREA (STEP {current_step}/{max_step_reached})"
+                else:
+                    # NEW ROUTE AREA: DETECT POTHOLES HERE
+                    if current_step in POTHOLE_STEPS and current_step not in permanently_repaired_steps:
+                        mat = round(random.uniform(0.4, 0.9), 2)
+                        dashboard_data['total_potholes'] += 1
+                        dashboard_data['total_material_kg'] = round(dashboard_data['total_material_kg'] + mat, 2)
+                        dashboard_data['material_level_pct'] = max(0.0, round(dashboard_data['material_level_pct'] - round(mat * 4, 1), 1))
+                        
+                        dashboard_data['detections'].append({
+                            "id": f"PH-{len(dashboard_data['detections']) + 1:02d}",
+                            "lat": dashboard_data['current_lat'],
+                            "lng": dashboard_data['current_lng'],
+                            "mat": mat,
+                            "step": current_step
+                        })
+                        permanently_repaired_steps.add(current_step)
+                        dashboard_data['warning_msg'] = f"🚨 NEW POTHOLE DETECTED & REPAIRED AT STEP {current_step}!"
+
+                # Update the max progress reached so far
+                if current_step > max_step_reached:
+                    max_step_reached = current_step
 
                 if dashboard_data['distance_traveled_km'] >= target_km or dashboard_data['step_idx'] >= len(active_waypoints) - 1:
                     dashboard_data['distance_traveled_km'] = target_km
                     dashboard_data['returning'] = True
                     dashboard_data['return_location'] = {"lat": dashboard_data['current_lat'], "lng": dashboard_data['current_lng']}
                     dashboard_data['rover_status'] = "RETURNING_TO_BASE"
-                    dashboard_data['warning_msg'] = "ℹ️ TARGET REACHED. RETURNING TO CUSTOM START..."
+                    dashboard_data['warning_msg'] = "ℹ️ TARGET REACHED. RETURNING TO START..."
                 else:
-                    if not dashboard_data['warning_msg'].startswith("ℹ️ SKIPPING") and not dashboard_data['warning_msg'].startswith("🚨"):
+                    if not dashboard_data['warning_msg'].startswith("⏩") and not dashboard_data['warning_msg'].startswith("🚨"):
                         dashboard_data['rover_status'] = "PATROL_ACTIVE"
         else:
             dashboard_data['distance_traveled_km'] = round(max(0.0, dashboard_data['distance_traveled_km'] - km_increment), 3)
@@ -235,13 +241,13 @@ def handle_telemetry():
                 dashboard_data['current_lng'] = round(base_lng - 0.00022, 5)
             elif dashboard_data['step_idx'] in recorded_pothole_steps:
                 dashboard_data['avoiding_obstacle'] = True
-                dashboard_data['warning_msg'] = "⚠️ POTHOLE DETECTED! MOVING AWAY FROM POTHOLE AREA..."
+                dashboard_data['warning_msg'] = "⚠️ POTHOLE DETECTED! MOVING AWAY FROM AREA..."
                 dashboard_data['current_lat'] = round(base_lat + 0.00025, 5)
                 dashboard_data['current_lng'] = round(base_lng - 0.00025, 5)
             else:
                 dashboard_data['avoiding_obstacle'] = False
                 if not dashboard_data['warning_msg'].startswith("⚠️ LOW") and not dashboard_data['warning_msg'].startswith("⚠️ MANUAL"):
-                    dashboard_data['warning_msg'] = "ℹ️ RETURNING TO CUSTOM START..."
+                    dashboard_data['warning_msg'] = "ℹ️ RETURNING TO START..."
                 dashboard_data['current_lat'] = base_lat
                 dashboard_data['current_lng'] = base_lng
 
@@ -250,7 +256,7 @@ def handle_telemetry():
                 dashboard_data['control_state'] = "STOPPED"
                 dashboard_data['returning'] = False
                 dashboard_data['camera_active'] = False
-                dashboard_data['warning_msg'] = "✅ SAFELY RETURNED TO SELECTED START LOCATION."
+                dashboard_data['warning_msg'] = f"✅ SAFELY RETURNED. NEXT RUN WILL RESUME SEARCH AFTER STEP {max_step_reached}."
 
                 duration_sec = int(time.time() - (dashboard_data['mission_start_time'] or time.time()))
                 mins, secs = divmod(duration_sec, 60)
