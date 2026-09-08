@@ -8,17 +8,17 @@ app = Flask(__name__)
 
 WAYPOINTS = [
     (17.42080, 78.65620), # Step 0: Start
-    (17.42050, 78.65540), # Step 1: Pothole 1 (First Run)
+    (17.42050, 78.65540), # Step 1: Pothole 1
     (17.42030, 78.65480), # Step 2: Vehicle 1
-    (17.42010, 78.65410), # Step 3: Pothole 2 (First Run)
+    (17.42010, 78.65410), # Step 3: Pothole 2
     (17.42000, 78.65350), # Step 4
     (17.42010, 78.65280), # Step 5: Vehicle 2
-    (17.42020, 78.65210), # Step 6: Pothole 3 (First Run)
+    (17.42020, 78.65210), # Step 6: Pothole 3
     (17.42050, 78.65140), # Step 7
     (17.42080, 78.65080), # Step 8: Abort Point (~4km)
-    (17.42125, 78.65020), # Step 9: Pothole 4 (Detected AFTER 4km on restart)
+    (17.42125, 78.65020), # Step 9: Pothole 4 (Scanning resumes here after abort)
     (17.42170, 78.64960), # Step 10
-    (17.42215, 78.64880), # Step 11: Pothole 5 (Detected AFTER 4km on restart)
+    (17.42215, 78.64880), # Step 11: Pothole 5
     (17.42260, 78.64800), # Step 12
     (17.42320, 78.64690), # Step 13
     (17.42380, 78.64580), # Step 14: Pothole 6
@@ -31,11 +31,11 @@ WAYPOINTS = [
 ]
 
 VEHICLE_STEPS = [2, 5, 8]
-POTHOLE_STEPS = [1, 3, 6, 9, 11, 14]  # Potholes placed before and after 4km mark
+POTHOLE_STEPS = [1, 3, 6, 9, 11, 14]
 
 permanently_repaired_steps = set()
 mission_history = []
-max_step_reached = 0  # Saved checkpoint step from previous aborted run
+max_step_reached = 0  # Dynamic checkpoint step for partial runs
 
 active_waypoints = list(WAYPOINTS)
 
@@ -63,6 +63,12 @@ dashboard_data = {
     "mission_history": []
 }
 
+def reset_session_cache():
+    """Clears temporary detection state so a fresh run can scan from scratch."""
+    global max_step_reached
+    max_step_reached = 0
+    permanently_repaired_steps.clear()
+
 @app.route('/')
 def index():
     return render_template('index.html')
@@ -75,7 +81,6 @@ def handle_config():
 
 @app.route('/api/set_start', methods=['POST'])
 def set_start_location():
-    global max_step_reached
     if dashboard_data['control_state'] != 'RUNNING':
         data = request.json or {}
         lat = float(data.get('lat', 17.42080))
@@ -89,8 +94,7 @@ def set_start_location():
             d_lng = (p[1] - WAYPOINTS[0][1])
             active_waypoints.append((round(lat + d_lat, 5), round(lng + d_lng, 5)))
 
-        max_step_reached = 0  # Reset progress history when moving start location
-        permanently_repaired_steps.clear()
+        reset_session_cache()
 
         dashboard_data['start_lat'] = lat
         dashboard_data['start_lng'] = lng
@@ -192,12 +196,12 @@ def handle_telemetry():
                 dashboard_data['distance_traveled_km'] = round(dashboard_data['distance_traveled_km'] + km_increment, 3)
                 current_step = dashboard_data['step_idx']
 
-                # --- RESUME / DETECTION LOGIC ---
+                # --- STEP SKIP / RESUME SCAN LOGIC ---
                 if current_step <= max_step_reached and max_step_reached > 0:
-                    # Rover is driving back through the previously completed section (e.g., 0km to 4km)
-                    dashboard_data['warning_msg'] = f"⏩ FAST TRANSIT: IGNORING PREVIOUSLY INSPECTED ROAD ({current_step}/{max_step_reached})"
+                    # Fast-forwarding through already inspected distance
+                    dashboard_data['warning_msg'] = f"⏩ TRANSITING: RETURNING TO RESUME POINT (STEP {current_step}/{max_step_reached})"
                 else:
-                    # Rover has CROSSED the previous checkpoint (e.g. past 4km)! Resume detection.
+                    # Crossed return threshold! Resume full scanning & detection.
                     if current_step in POTHOLE_STEPS and current_step not in permanently_repaired_steps:
                         mat = round(random.uniform(0.4, 0.9), 2)
                         dashboard_data['total_potholes'] += 1
@@ -212,11 +216,10 @@ def handle_telemetry():
                             "step": current_step
                         })
                         permanently_repaired_steps.add(current_step)
-                        dashboard_data['warning_msg'] = f"🚨 NEW POTHOLE DETECTED & REPAIRED AT STEP {current_step}!"
+                        dashboard_data['warning_msg'] = f"🚨 POTHOLE DETECTED & REPAIRED AT STEP {current_step}!"
                     else:
-                        dashboard_data['warning_msg'] = f"🔍 ACTIVE SEARCHING: SCANNING UNINSPECTED ROAD..."
+                        dashboard_data['warning_msg'] = f"🔍 SCANNING NEW SECTION AT STEP {current_step}..."
 
-                    # Continuously advance the highest point reached
                     max_step_reached = current_step
 
                 if dashboard_data['distance_traveled_km'] >= target_km or dashboard_data['step_idx'] >= len(active_waypoints) - 1:
@@ -258,12 +261,13 @@ def handle_telemetry():
                 dashboard_data['control_state'] = "STOPPED"
                 dashboard_data['returning'] = False
                 dashboard_data['camera_active'] = False
-                dashboard_data['warning_msg'] = f"✅ SAFELY RETURNED. CHECKPOINT SAVED AT STEP {max_step_reached}. RESTART WILL RESUME SEARCH AFTER THIS POINT."
+                dashboard_data['warning_msg'] = "✅ MISSION COMPLETED. SESSION RESET FOR NEW RUNS."
 
                 duration_sec = int(time.time() - (dashboard_data['mission_start_time'] or time.time()))
                 mins, secs = divmod(duration_sec, 60)
                 ret_loc = dashboard_data['return_location'] or {"lat": base_lat, "lng": base_lng}
 
+                # Save history log entry
                 history_entry = {
                     "id": f"RUN-{len(mission_history) + 1:03d}",
                     "timestamp": datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
@@ -276,6 +280,9 @@ def handle_telemetry():
                 
                 mission_history.insert(0, history_entry)
                 dashboard_data['mission_history'] = mission_history
+
+                # WIPE SESSION DATA ON FULL COMPLETION (FORGETS PREVIOUS POINTS FOR FUTURE RUNS)
+                reset_session_cache()
 
     return jsonify(dashboard_data)
 
