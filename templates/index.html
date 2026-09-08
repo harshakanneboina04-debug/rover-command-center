@@ -8,14 +8,14 @@
     <style>
         * { box-sizing: border-box; }
         body { margin: 0; padding: 0; background-color: #0f172a; color: #f8fafc; font-family: sans-serif; display: flex; height: 100vh; overflow: hidden; }
-        #sidebar { width: 360px; padding: 15px; display: flex; flex-direction: column; gap: 12px; background: #1e293b; z-index: 1000; overflow-y: auto; }
+        #sidebar { width: 380px; padding: 15px; display: flex; flex-direction: column; gap: 12px; background: #1e293b; z-index: 1000; overflow-y: auto; }
         #map { flex-grow: 1; height: 100%; }
         .card { background: #0f172a; padding: 12px; border-radius: 8px; border: 1px solid #334155; }
         
         .cam-wrapper {
             position: relative;
             width: 100%;
-            height: 180px;
+            height: 160px;
             background: #000;
             border-radius: 6px;
             border: 1px solid #475569;
@@ -23,38 +23,20 @@
         }
 
         #webcam-feed {
-            width: 100%;
-            height: 100%;
-            object-fit: cover;
-            display: block;
-            opacity: 0;
-            transform: scale(1.1);
-            transition: opacity 0.8s ease-in-out, transform 0.8s ease-in-out;
+            width: 100%; height: 100%; object-fit: cover; display: block; opacity: 0;
+            transition: opacity 0.8s ease-in-out;
         }
 
-        #webcam-feed.active {
-            opacity: 1;
-            transform: scale(1);
-        }
+        #webcam-feed.active { opacity: 1; }
 
         .cam-overlay {
-            position: absolute;
-            top: 0; left: 0; width: 100%; height: 100%;
-            display: flex;
-            align-items: center;
-            justify-content: center;
-            background: rgba(15, 23, 42, 0.85);
-            color: #94a3b8;
-            font-size: 0.85rem;
-            font-weight: bold;
-            letter-spacing: 1px;
-            transition: opacity 0.5s ease;
+            position: absolute; top: 0; left: 0; width: 100%; height: 100%;
+            display: flex; align-items: center; justify-content: center;
+            background: rgba(15, 23, 42, 0.85); color: #94a3b8; font-size: 0.85rem; font-weight: bold;
             pointer-events: none;
         }
 
-        .cam-overlay.hidden {
-            opacity: 0;
-        }
+        .cam-overlay.hidden { opacity: 0; }
 
         .btn-group { display: flex; gap: 8px; margin-top: 10px; }
         button { flex: 1; padding: 10px; border: none; border-radius: 4px; font-weight: bold; cursor: pointer; color: white; }
@@ -65,13 +47,29 @@
         .warning-box { background: #ef4444; color: white; padding: 10px; border-radius: 6px; font-weight: bold; text-align: center; display: none; margin-top: 8px; font-size: 0.85rem; border: 1px solid #f87171; }
         
         .bar-container { background: #334155; border-radius: 4px; height: 10px; width: 100%; margin-top: 4px; overflow: hidden; }
-        .bar-fill { height: 100%; background: #22c55e; transition: width 0.5s ease, background-color 0.5s ease; }
+        .bar-fill { height: 100%; background: #22c55e; transition: width 0.5s ease; }
+
+        /* Pothole Data Table */
+        .pothole-list { max-height: 120px; overflow-y: auto; margin-top: 8px; font-size: 0.8rem; }
+        .pothole-item { display: flex; justify-content: space-between; padding: 4px 6px; background: #1e293b; border-radius: 4px; margin-bottom: 4px; border-left: 3px solid #eab308; }
+
+        /* Custom Robot Icon Styling */
+        .robot-marker-icon {
+            background: #0284c7;
+            border: 2px solid #ffffff;
+            border-radius: 50%;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            box-shadow: 0 0 12px #38bdf8;
+            transition: transform 0.3s ease;
+        }
     </style>
 </head>
 <body>
 
 <div id="sidebar">
-    <h3 style="margin:0 0 5px 0;">ROVER GIS LIVE TRACKING</h3>
+    <h3 style="margin:0 0 5px 0;">ROVER GIS COMMAND CENTER</h3>
     
     <div class="card">
         <div class="cam-wrapper">
@@ -82,9 +80,9 @@
     </div>
 
     <div class="card">
-        <label style="font-size: 0.85rem; font-weight: bold;">SET TARGET RANGE</label>
+        <label style="font-size: 0.85rem; font-weight: bold;">TARGET ROUTE: VENKATAPUR RD</label>
         <select id="target-km" onchange="updateConfig()" style="width: 100%; padding: 8px; margin-top: 5px; background: #1e293b; color: white; border: 1px solid #475569; border-radius: 4px;">
-            <option value="0.05">0.05 km (50m - Quick Demo)</option>
+            <option value="0.05">0.05 km (50m Demo)</option>
             <option value="0.5">0.5 km</option>
             <option value="1.0">1.0 km</option>
             <option value="5.0">5.0 km</option>
@@ -99,20 +97,28 @@
 
     <div class="card">
         <div style="font-size: 0.9rem;">STATUS: <span id="rover-status" class="stat">READY</span></div>
-        <div style="margin-top: 8px; font-size: 0.9rem;">DISTANCE COVERED: <br><span id="distance-km" class="stat">0 / 10.0 km</span></div>
+        <div style="margin-top: 6px; font-size: 0.9rem;">DISTANCE COVERED: <br><span id="distance-km" class="stat">0 / 10.0 km</span></div>
         
-        <div style="margin-top: 10px; font-size: 0.85rem; font-weight: bold;">
+        <div style="margin-top: 8px; font-size: 0.8rem; font-weight: bold;">
             BATTERY: <span id="battery-text" style="color:#22c55e;">100%</span>
             <div class="bar-container"><div id="battery-bar" class="bar-fill" style="width: 100%;"></div></div>
         </div>
 
-        <div style="margin-top: 10px; font-size: 0.85rem; font-weight: bold;">
+        <div style="margin-top: 8px; font-size: 0.8rem; font-weight: bold;">
             MATERIAL LEVEL: <span id="material-text" style="color:#22c55e;">100%</span>
             <div class="bar-container"><div id="material-bar" class="bar-fill" style="width: 100%;"></div></div>
         </div>
+    </div>
 
-        <div style="margin-top: 10px; font-size: 0.9rem;">NO. OF HOLES REPAIRED: <br><span id="potholes-count" class="stat">0</span></div>
-        <div style="margin-top: 8px; font-size: 0.9rem;">MATERIAL USED: <br><span id="material-kg" class="stat">0 kg</span></div>
+    <div class="card">
+        <div style="font-size: 0.85rem; font-weight: bold; color: #facc15;">DETECTED POTHOLE DATA</div>
+        <div style="display:flex; justify-content:space-between; margin-top:4px; font-size:0.85rem;">
+            <span>TOTAL COUNT: <b id="potholes-count" style="color:#38bdf8;">0</b></span>
+            <span>USED: <b id="material-kg" style="color:#38bdf8;">0 kg</b></span>
+        </div>
+        <div id="pothole-log-list" class="pothole-list">
+            <div style="color: #64748b; font-style: italic; padding: 4px;">No potholes detected yet.</div>
+        </div>
     </div>
 </div>
 
@@ -120,21 +126,33 @@
 
 <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
 <script>
-    const map = L.map('map').setView([17.4208, 78.6562], 16);
+    const map = L.map('map').setView([17.4210, 78.6560], 16);
 
-    // Google Maps Roadmap Tiles
+    // Google Maps Roadmap Tile Engine
     L.tileLayer('http://{s}.google.com/vt/lyrs=m&x={x}&y={y}&z={z}', {
         maxZoom: 20,
         subdomains: ['mt0', 'mt1', 'mt2', 'mt3']
     }).addTo(map);
 
-    const roverIcon = L.divIcon({
-        className: 'custom-rover',
-        html: '<div style="background:#00f0ff; width:18px; height:18px; border-radius:50%; border:3px solid white; box-shadow:0 0 10px #00f0ff;"></div>',
-        iconSize: [20, 20]
+    // Zomato-style Robot Icon SVG
+    const robotSvg = `
+    <svg width="24" height="24" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
+        <rect x="5" y="7" width="14" height="12" rx="3" fill="#38bdf8" stroke="#ffffff" stroke-width="2"/>
+        <circle cx="9" cy="11" r="1.5" fill="#0f172a"/>
+        <circle cx="15" cy="11" r="1.5" fill="#0f172a"/>
+        <line x1="12" y1="2" x2="12" y2="7" stroke="#ffffff" stroke-width="2"/>
+        <circle cx="12" cy="2" r="1.5" fill="#ef4444"/>
+        <rect x="8" y="15" width="8" height="2" rx="1" fill="#0f172a"/>
+    </svg>`;
+
+    const robotIcon = L.divIcon({
+        className: 'robot-marker-icon',
+        html: robotSvg,
+        iconSize: [32, 32],
+        iconAnchor: [16, 16]
     });
 
-    let roverMarker = L.marker([17.4208, 78.6562], {icon: roverIcon}).addTo(map);
+    let roverMarker = L.marker([17.4210, 78.6560], {icon: robotIcon}).addTo(map);
     let potholeMarkers = [];
 
     async function initCamera() {
@@ -142,7 +160,7 @@
             const stream = await navigator.mediaDevices.getUserMedia({ video: true, audio: false });
             document.getElementById('webcam-feed').srcObject = stream;
         } catch (err) {
-            console.error("Camera access error:", err);
+            console.error("Camera error:", err);
         }
     }
     initCamera();
@@ -150,7 +168,6 @@
     function setCameraState(active) {
         const videoElem = document.getElementById('webcam-feed');
         const overlay = document.getElementById('cam-status');
-        
         if (active) {
             videoElem.classList.add('active');
             overlay.classList.add('hidden');
@@ -187,14 +204,12 @@
                 document.getElementById('material-kg').innerText = `${data.total_material_kg} kg`;
 
                 const batBar = document.getElementById('battery-bar');
-                const batText = document.getElementById('battery-text');
-                batText.innerText = `${data.battery_pct}%`;
+                document.getElementById('battery-text').innerText = `${data.battery_pct}%`;
                 batBar.style.width = `${data.battery_pct}%`;
                 batBar.style.backgroundColor = data.battery_pct < 25 ? '#ef4444' : '#22c55e';
 
                 const matBar = document.getElementById('material-bar');
-                const matText = document.getElementById('material-text');
-                matText.innerText = `${data.material_level_pct}%`;
+                document.getElementById('material-text').innerText = `${data.material_level_pct}%`;
                 matBar.style.width = `${data.material_level_pct}%`;
                 matBar.style.backgroundColor = data.material_level_pct < 20 ? '#ef4444' : '#22c55e';
 
@@ -212,6 +227,20 @@
                 roverMarker.setLatLng(pos);
                 map.panTo(pos);
 
+                // Render Pothole Log Panel Data
+                const logContainer = document.getElementById('pothole-log-list');
+                if (data.detections.length > 0) {
+                    logContainer.innerHTML = data.detections.map(det => `
+                        <div class="pothole-item">
+                            <span><b>${det.id}</b> (${det.lat.toFixed(4)}, ${det.lng.toFixed(4)})</span>
+                            <span style="color:#22c55e;">${det.mat} kg</span>
+                        </div>
+                    `).join('');
+                } else {
+                    logContainer.innerHTML = `<div style="color: #64748b; font-style: italic; padding: 4px;">No potholes detected yet.</div>`;
+                }
+
+                // Synchronize Map Pothole Markers & Info Tooltips
                 if (data.detections.length === 0 && potholeMarkers.length > 0) {
                     potholeMarkers.forEach(m => map.removeLayer(m));
                     potholeMarkers = [];
@@ -220,8 +249,10 @@
                 if (data.detections.length > potholeMarkers.length) {
                     data.detections.slice(potholeMarkers.length).forEach(det => {
                         const m = L.circleMarker([det.lat, det.lng], {
-                            color: '#22c55e', radius: 8, fillOpacity: 0.8
+                            color: '#ef4444', fillColor: '#facc15', fillOpacity: 0.9, radius: 8
                         }).addTo(map);
+
+                        m.bindPopup(`<b>${det.id} Detected</b><br>Lat: ${det.lat}<br>Lng: ${det.lng}<br>Fill Material: ${det.mat} kg`);
                         potholeMarkers.push(m);
                     });
                 }
