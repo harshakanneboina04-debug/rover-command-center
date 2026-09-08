@@ -4,7 +4,7 @@ from flask import Flask, render_template, request, jsonify
 
 app = Flask(__name__)
 
-# Precise On-Road GPS Coordinates for Venkatapur Road
+# Precise On-Road GPS Coordinates along Venkatapur Road
 WAYPOINTS = [
     (17.42080, 78.65620), # Start: Anurag Main Gate
     (17.42030, 78.65480), # Venkatapur Rd (South of Lake)
@@ -93,9 +93,11 @@ def handle_control():
 def handle_telemetry():
     if dashboard_data['control_state'] == 'RUNNING':
         target_km = dashboard_data['target_km']
-        km_increment = round(target_km / 25.0, 3)
+        # Reduced step increment for much slower movement speed
+        km_increment = round(target_km / 60.0, 3)
 
-        dashboard_data['battery_pct'] = max(0.0, round(dashboard_data['battery_pct'] - round(random.uniform(1.5, 2.5), 1), 1))
+        # Deplete battery at a slower rate per tick
+        dashboard_data['battery_pct'] = max(0.0, round(dashboard_data['battery_pct'] - round(random.uniform(0.5, 1.2), 1), 1))
 
         if not dashboard_data['returning']:
             if dashboard_data['battery_pct'] <= 20.0:
@@ -107,16 +109,15 @@ def handle_telemetry():
                 dashboard_data['warning_msg'] = "⚠️ LOW MATERIAL (<15%)! RETURNING HOME..."
                 dashboard_data['rover_status'] = "AUTO_RETURNING"
             else:
-                obstacle_ahead = random.choice([False, False, True, False])
+                obstacle_ahead = random.choice([False, False, False, True, False])
                 dashboard_data['step_idx'] = min(dashboard_data['step_idx'] + 1, len(WAYPOINTS) - 1)
                 base_lat, base_lng = WAYPOINTS[dashboard_data['step_idx']]
 
                 if obstacle_ahead:
                     dashboard_data['avoiding_obstacle'] = True
                     dashboard_data['warning_msg'] = "⚠️ OBSTACLE ON VENKATAPUR RD! DETOURING..."
-                    # In-lane slight offset on the road
-                    dashboard_data['current_lat'] = round(base_lat + 0.00004, 5)
-                    dashboard_data['current_lng'] = round(base_lng - 0.00004, 5)
+                    dashboard_data['current_lat'] = round(base_lat + 0.00015, 5)
+                    dashboard_data['current_lng'] = round(base_lng - 0.00015, 5)
                 else:
                     dashboard_data['avoiding_obstacle'] = False
                     if not dashboard_data['warning_msg'].startswith("⚠️ LOW"):
@@ -126,11 +127,11 @@ def handle_telemetry():
 
                 dashboard_data['distance_traveled_km'] = round(dashboard_data['distance_traveled_km'] + km_increment, 3)
 
-                if random.choice([True, False, False]):
+                if random.choice([True, False, False, False]):
                     mat = round(random.uniform(0.3, 0.8), 2)
                     dashboard_data['total_potholes'] += 1
                     dashboard_data['total_material_kg'] = round(dashboard_data['total_material_kg'] + mat, 2)
-                    dashboard_data['material_level_pct'] = max(0.0, round(dashboard_data['material_level_pct'] - round(mat * 5, 1), 1))
+                    dashboard_data['material_level_pct'] = max(0.0, round(dashboard_data['material_level_pct'] - round(mat * 4, 1), 1))
                     
                     dashboard_data['detections'].append({
                         "id": f"PH-{len(dashboard_data['detections']) + 1:02d}",
@@ -149,17 +150,18 @@ def handle_telemetry():
                     if not dashboard_data['warning_msg']:
                         dashboard_data['rover_status'] = "PATROL_ACTIVE"
         else:
-            # Returning mode: treat previously logged potholes as obstacles
+            # RETURN MODE
             dashboard_data['distance_traveled_km'] = round(max(0.0, dashboard_data['distance_traveled_km'] - km_increment), 3)
             dashboard_data['step_idx'] = max(0, dashboard_data['step_idx'] - 1)
             base_lat, base_lng = WAYPOINTS[dashboard_data['step_idx']]
 
-            recorded_potholes = [d['step'] for d in dashboard_data['detections']]
-            if dashboard_data['step_idx'] in recorded_potholes:
+            recorded_pothole_steps = [d['step'] for d in dashboard_data['detections']]
+            
+            if dashboard_data['step_idx'] in recorded_pothole_steps:
                 dashboard_data['avoiding_obstacle'] = True
-                dashboard_data['warning_msg'] = f"⚠️ POTHOLE OBSTACLE AHEAD! BYPASSING ON ROAD..."
-                dashboard_data['current_lat'] = round(base_lat + 0.00005, 5)
-                dashboard_data['current_lng'] = round(base_lng - 0.00004, 5)
+                dashboard_data['warning_msg'] = f"⚠️ POTHOLE OBSTACLE DETECTED! MOVING AWAY FROM POTHOLE AREA..."
+                dashboard_data['current_lat'] = round(base_lat + 0.00025, 5)
+                dashboard_data['current_lng'] = round(base_lng - 0.00025, 5)
             else:
                 dashboard_data['avoiding_obstacle'] = False
                 if not dashboard_data['warning_msg'].startswith("⚠️ LOW") and not dashboard_data['warning_msg'].startswith("⚠️ MANUAL"):
