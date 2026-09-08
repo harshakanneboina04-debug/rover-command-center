@@ -4,20 +4,33 @@ from flask import Flask, render_template, request, jsonify
 
 app = Flask(__name__)
 
-# Precise On-Road GPS Coordinates along Venkatapur Road
+# Precise GPS Coordinates strictly along Venkatapur Road
 WAYPOINTS = [
-    (17.42080, 78.65620), # Start: Anurag Main Gate
-    (17.42030, 78.65480), # Venkatapur Rd (South of Lake)
-    (17.42000, 78.65350), # Venkatapur Rd (Curve past CVSR)
-    (17.42020, 78.65210), # Venkatapur Rd (South-West Bend)
-    (17.42080, 78.65080), # Venkatapur Rd (Passing NESTA CAFE)
-    (17.42170, 78.64960), # Venkatapur Rd Junction
-    (17.42260, 78.64800), # Venkatapur Rd (North-West Stretch)
-    (17.42380, 78.64580), # Venkatapur Rd
-    (17.42500, 78.64350), # Venkatapur Rd (Towards Neelima Hospitals)
-    (17.42620, 78.64100), # Venkatapur Rd Extension
-    (17.42780, 78.63800)  # Highway Junction
+    (17.42080, 78.65620), # Step 0: Anurag Main Gate
+    (17.42050, 78.65540), # Step 1
+    (17.42030, 78.65480), # Step 2: [FIXED VEHICLE 1]
+    (17.42010, 78.65410), # Step 3
+    (17.42000, 78.65350), # Step 4
+    (17.42010, 78.65280), # Step 5: [FIXED VEHICLE 2]
+    (17.42020, 78.65210), # Step 6
+    (17.42050, 78.65140), # Step 7
+    (17.42080, 78.65080), # Step 8: [FIXED VEHICLE 3]
+    (17.42125, 78.65020), # Step 9
+    (17.42170, 78.64960), # Step 10
+    (17.42215, 78.64880), # Step 11
+    (17.42260, 78.64800), # Step 12
+    (17.42320, 78.64690), # Step 13
+    (17.42380, 78.64580), # Step 14
+    (17.42440, 78.64465), # Step 15
+    (17.42500, 78.64350), # Step 16
+    (17.42560, 78.64225), # Step 17
+    (17.42620, 78.64100), # Step 18
+    (17.42700, 78.63950), # Step 19
+    (17.42780, 78.63800)  # Step 20: Highway Junction
 ]
+
+# Fixed Vehicle Obstacle Steps on Venkatapur Road
+VEHICLE_STEPS = [2, 5, 8]
 
 dashboard_data = {
     "rover_status": "READY",
@@ -93,10 +106,8 @@ def handle_control():
 def handle_telemetry():
     if dashboard_data['control_state'] == 'RUNNING':
         target_km = dashboard_data['target_km']
-        # Reduced step increment for much slower movement speed
         km_increment = round(target_km / 60.0, 3)
 
-        # Deplete battery at a slower rate per tick
         dashboard_data['battery_pct'] = max(0.0, round(dashboard_data['battery_pct'] - round(random.uniform(0.5, 1.2), 1), 1))
 
         if not dashboard_data['returning']:
@@ -109,15 +120,16 @@ def handle_telemetry():
                 dashboard_data['warning_msg'] = "⚠️ LOW MATERIAL (<15%)! RETURNING HOME..."
                 dashboard_data['rover_status'] = "AUTO_RETURNING"
             else:
-                obstacle_ahead = random.choice([False, False, False, True, False])
                 dashboard_data['step_idx'] = min(dashboard_data['step_idx'] + 1, len(WAYPOINTS) - 1)
                 base_lat, base_lng = WAYPOINTS[dashboard_data['step_idx']]
 
-                if obstacle_ahead:
+                # Check for vehicle obstacle on forward path
+                if dashboard_data['step_idx'] in VEHICLE_STEPS:
+                    vehicle_num = VEHICLE_STEPS.index(dashboard_data['step_idx']) + 1
                     dashboard_data['avoiding_obstacle'] = True
-                    dashboard_data['warning_msg'] = "⚠️ OBSTACLE ON VENKATAPUR RD! DETOURING..."
-                    dashboard_data['current_lat'] = round(base_lat + 0.00015, 5)
-                    dashboard_data['current_lng'] = round(base_lng - 0.00015, 5)
+                    dashboard_data['warning_msg'] = f"⚠️ VEHICLE OBSTACLE {vehicle_num} AHEAD ON ROAD! MANEUVERING AROUND IT..."
+                    dashboard_data['current_lat'] = round(base_lat + 0.00018, 5)
+                    dashboard_data['current_lng'] = round(base_lng - 0.00018, 5)
                 else:
                     dashboard_data['avoiding_obstacle'] = False
                     if not dashboard_data['warning_msg'].startswith("⚠️ LOW"):
@@ -127,37 +139,45 @@ def handle_telemetry():
 
                 dashboard_data['distance_traveled_km'] = round(dashboard_data['distance_traveled_km'] + km_increment, 3)
 
-                if random.choice([True, False, False, False]):
-                    mat = round(random.uniform(0.3, 0.8), 2)
-                    dashboard_data['total_potholes'] += 1
-                    dashboard_data['total_material_kg'] = round(dashboard_data['total_material_kg'] + mat, 2)
-                    dashboard_data['material_level_pct'] = max(0.0, round(dashboard_data['material_level_pct'] - round(mat * 4, 1), 1))
-                    
-                    dashboard_data['detections'].append({
-                        "id": f"PH-{len(dashboard_data['detections']) + 1:02d}",
-                        "lat": dashboard_data['current_lat'],
-                        "lng": dashboard_data['current_lng'],
-                        "mat": mat,
-                        "step": dashboard_data['step_idx']
-                    })
+                # Force high detection rate to ensure at least 4 potholes are detected quickly
+                if len(dashboard_data['detections']) < 4 or random.choice([True, True, False]):
+                    if not any(d['step'] == dashboard_data['step_idx'] for d in dashboard_data['detections']):
+                        mat = round(random.uniform(0.4, 0.9), 2)
+                        dashboard_data['total_potholes'] += 1
+                        dashboard_data['total_material_kg'] = round(dashboard_data['total_material_kg'] + mat, 2)
+                        dashboard_data['material_level_pct'] = max(0.0, round(dashboard_data['material_level_pct'] - round(mat * 4, 1), 1))
+                        
+                        dashboard_data['detections'].append({
+                            "id": f"PH-{len(dashboard_data['detections']) + 1:02d}",
+                            "lat": dashboard_data['current_lat'],
+                            "lng": dashboard_data['current_lng'],
+                            "mat": mat,
+                            "step": dashboard_data['step_idx']
+                        })
 
                 if dashboard_data['distance_traveled_km'] >= target_km or dashboard_data['step_idx'] >= len(WAYPOINTS) - 1:
                     dashboard_data['distance_traveled_km'] = target_km
                     dashboard_data['returning'] = True
                     dashboard_data['rover_status'] = "RETURNING_TO_BASE"
-                    dashboard_data['warning_msg'] = "ℹ️ TARGET REACHED. RETURNING HOME..."
+                    dashboard_data['warning_msg'] = "ℹ️ TARGET REACHED. RETURNING HOME ALONG ROAD..."
                 else:
                     if not dashboard_data['warning_msg']:
                         dashboard_data['rover_status'] = "PATROL_ACTIVE"
         else:
-            # RETURN MODE
+            # RETURN MODE: Maneuver around both vehicles AND potholes
             dashboard_data['distance_traveled_km'] = round(max(0.0, dashboard_data['distance_traveled_km'] - km_increment), 3)
             dashboard_data['step_idx'] = max(0, dashboard_data['step_idx'] - 1)
             base_lat, base_lng = WAYPOINTS[dashboard_data['step_idx']]
 
             recorded_pothole_steps = [d['step'] for d in dashboard_data['detections']]
             
-            if dashboard_data['step_idx'] in recorded_pothole_steps:
+            if dashboard_data['step_idx'] in VEHICLE_STEPS:
+                vehicle_num = VEHICLE_STEPS.index(dashboard_data['step_idx']) + 1
+                dashboard_data['avoiding_obstacle'] = True
+                dashboard_data['warning_msg'] = f"⚠️ VEHICLE OBSTACLE {vehicle_num} DETECTED! DETOURING ON RETURN..."
+                dashboard_data['current_lat'] = round(base_lat + 0.00022, 5)
+                dashboard_data['current_lng'] = round(base_lng - 0.00022, 5)
+            elif dashboard_data['step_idx'] in recorded_pothole_steps:
                 dashboard_data['avoiding_obstacle'] = True
                 dashboard_data['warning_msg'] = f"⚠️ POTHOLE OBSTACLE DETECTED! MOVING AWAY FROM POTHOLE AREA..."
                 dashboard_data['current_lat'] = round(base_lat + 0.00025, 5)
