@@ -39,6 +39,7 @@
         .btn-power { background: #475569; width: 100%; margin-top: 8px; }
         .btn-power.off { background: #16a34a; }
         .btn-clear-history { background: #dc2626; width: 100%; margin-top: 8px; padding: 8px; font-size: 0.8rem; }
+        .btn-clear-map { background: #0284c7; width: 100%; margin-top: 8px; padding: 6px; font-size: 0.78rem; }
         .stat { font-size: 1.1rem; font-weight: bold; color: #38bdf8; margin-top: 4px; }
         .warning-box { background: #0284c7; color: white; padding: 10px; border-radius: 6px; font-weight: bold; text-align: center; font-size: 0.85rem; border: 1px solid #38bdf8; }
         
@@ -119,6 +120,7 @@
             <span>TOTAL COUNT: <b id="potholes-count" style="color:#38bdf8;">0</b></span>
             <span>USED: <b id="material-kg" style="color:#38bdf8;">0 kg</b></span>
         </div>
+        <button class="btn-clear-map" onclick="clearRedDots()">🧹 CLEAR MAP MARKERS</button>
         <div id="pothole-log-list" class="pothole-list">
             <div style="color: #64748b; font-style: italic; padding: 4px;">No potholes detected yet.</div>
         </div>
@@ -154,7 +156,6 @@
     let startMarker = L.marker([17.42080, 78.65620]).addTo(map).bindPopup("<b>Start Location</b>");
     let potholeMarkers = [];
 
-    // Click map to select custom start position when stopped
     map.on('click', function(e) {
         if (!isPoweredOn) return;
         fetch('/api/set_start', {
@@ -207,7 +208,6 @@
     function togglePower() {
         const btn = document.getElementById('power-toggle-btn');
         if (isPoweredOn) {
-            // POWER OFF: Cut camera & clear red dots
             isPoweredOn = false;
             sendControl('POWER_OFF');
             btn.innerText = "⚡ POWER ON";
@@ -221,7 +221,6 @@
             setCameraState(false);
             clearRedDots();
         } else {
-            // POWER ON: Re-enable machine
             isPoweredOn = true;
             sendControl('STOP');
             btn.innerText = "⚡ POWER OFF";
