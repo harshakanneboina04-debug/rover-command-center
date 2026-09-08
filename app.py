@@ -8,15 +8,15 @@ app = Flask(__name__)
 
 WAYPOINTS = [
     (17.42080, 78.65620), # Step 0: Default Start
-    (17.42050, 78.65540),
-    (17.42030, 78.65480), # Vehicle 1
-    (17.42010, 78.65410),
+    (17.42050, 78.65540), # Step 1: Pothole 1
+    (17.42030, 78.65480), # Step 2: Vehicle 1 Obstacle
+    (17.42010, 78.65410), # Step 3: Pothole 2
     (17.42000, 78.65350),
-    (17.42010, 78.65280), # Vehicle 2
-    (17.42020, 78.65210),
+    (17.42010, 78.65280), # Step 5: Vehicle 2 Obstacle
+    (17.42020, 78.65210), # Step 6: Pothole 3
     (17.42050, 78.65140),
-    (17.42080, 78.65080), # Vehicle 3
-    (17.42125, 78.65020),
+    (17.42080, 78.65080), # Step 8: Vehicle 3 Obstacle
+    (17.42125, 78.65020), # Step 9: Pothole 4
     (17.42170, 78.64960),
     (17.42215, 78.64880),
     (17.42260, 78.64800),
@@ -31,6 +31,8 @@ WAYPOINTS = [
 ]
 
 VEHICLE_STEPS = [2, 5, 8]
+POTHOLE_STEPS = [1, 3, 6, 9]
+
 permanently_repaired_steps = set()
 mission_history = []
 
@@ -189,23 +191,24 @@ def handle_telemetry():
                 dashboard_data['distance_traveled_km'] = round(dashboard_data['distance_traveled_km'] + km_increment, 3)
 
                 current_step = dashboard_data['step_idx']
-                if current_step not in permanently_repaired_steps:
-                    if len(dashboard_data['detections']) < 4 or random.choice([True, True, False]):
-                        if not any(d['step'] == current_step for d in dashboard_data['detections']):
-                            mat = round(random.uniform(0.4, 0.9), 2)
-                            dashboard_data['total_potholes'] += 1
-                            dashboard_data['total_material_kg'] = round(dashboard_data['total_material_kg'] + mat, 2)
-                            dashboard_data['material_level_pct'] = max(0.0, round(dashboard_data['material_level_pct'] - round(mat * 4, 1), 1))
-                            
-                            dashboard_data['detections'].append({
-                                "id": f"PH-{len(dashboard_data['detections']) + 1:02d}",
-                                "lat": dashboard_data['current_lat'],
-                                "lng": dashboard_data['current_lng'],
-                                "mat": mat,
-                                "step": current_step
-                            })
-                            permanently_repaired_steps.add(current_step)
-                else:
+
+                # GUARANTEED POTHOLE DETECTION AT SPECIFIC STEPS
+                if current_step in POTHOLE_STEPS and current_step not in permanently_repaired_steps:
+                    mat = round(random.uniform(0.4, 0.9), 2)
+                    dashboard_data['total_potholes'] += 1
+                    dashboard_data['total_material_kg'] = round(dashboard_data['total_material_kg'] + mat, 2)
+                    dashboard_data['material_level_pct'] = max(0.0, round(dashboard_data['material_level_pct'] - round(mat * 4, 1), 1))
+                    
+                    dashboard_data['detections'].append({
+                        "id": f"PH-{len(dashboard_data['detections']) + 1:02d}",
+                        "lat": dashboard_data['current_lat'],
+                        "lng": dashboard_data['current_lng'],
+                        "mat": mat,
+                        "step": current_step
+                    })
+                    permanently_repaired_steps.add(current_step)
+                    dashboard_data['warning_msg'] = f"🚨 POTHOLE DETECTED & REPAIRED AT STEP {current_step}!"
+                elif current_step in permanently_repaired_steps:
                     dashboard_data['warning_msg'] = f"ℹ️ SKIPPING PREVIOUSLY FILLED POTHOLE AT STEP {current_step}"
 
                 if dashboard_data['distance_traveled_km'] >= target_km or dashboard_data['step_idx'] >= len(active_waypoints) - 1:
@@ -215,7 +218,7 @@ def handle_telemetry():
                     dashboard_data['rover_status'] = "RETURNING_TO_BASE"
                     dashboard_data['warning_msg'] = "ℹ️ TARGET REACHED. RETURNING TO CUSTOM START..."
                 else:
-                    if not dashboard_data['warning_msg'].startswith("ℹ️ SKIPPING"):
+                    if not dashboard_data['warning_msg'].startswith("ℹ️ SKIPPING") and not dashboard_data['warning_msg'].startswith("🚨"):
                         dashboard_data['rover_status'] = "PATROL_ACTIVE"
         else:
             dashboard_data['distance_traveled_km'] = round(max(0.0, dashboard_data['distance_traveled_km'] - km_increment), 3)
