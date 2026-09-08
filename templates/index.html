@@ -16,20 +16,21 @@
         .card { background: #0f172a; padding: 12px; border-radius: 8px; border: 1px solid #334155; }
         
         .cam-wrapper {
-            position: relative; width: 100%; height: 150px; background: #000;
-            border-radius: 6px; border: 1px solid #475569; overflow: hidden;
+            position: relative; width: 100%; height: 180px; background: #000;
+            border-radius: 6px; border: 1px solid #475569; overflow: hidden; cursor: pointer;
         }
 
-        #webcam-feed { width: 100%; height: 100%; object-fit: cover; display: block; opacity: 0; transition: opacity 0.8s ease-in-out; }
+        #webcam-feed { width: 100%; height: 100%; object-fit: cover; display: block; opacity: 0; transition: opacity 0.5s ease-in-out; }
         #webcam-feed.active { opacity: 1; }
 
         .cam-overlay {
             position: absolute; top: 0; left: 0; width: 100%; height: 100%;
             display: flex; align-items: center; justify-content: center;
-            background: rgba(15, 23, 42, 0.85); color: #94a3b8; font-size: 0.85rem; font-weight: bold; pointer-events: none;
+            background: rgba(15, 23, 42, 0.85); color: #94a3b8; font-size: 0.85rem; font-weight: bold;
+            text-align: center; padding: 10px; z-index: 10; transition: opacity 0.3s ease;
         }
 
-        .cam-overlay.hidden { opacity: 0; }
+        .cam-overlay.hidden { opacity: 0; pointer-events: none; }
 
         .btn-group { display: flex; gap: 8px; margin-top: 10px; }
         button { flex: 1; padding: 10px; border: none; border-radius: 4px; font-weight: bold; cursor: pointer; color: white; }
@@ -41,7 +42,7 @@
         .btn-clear-history { background: #dc2626; width: 100%; margin-top: 8px; padding: 8px; font-size: 0.8rem; }
         .btn-clear-map { background: #0284c7; width: 100%; margin-top: 8px; padding: 6px; font-size: 0.78rem; }
         .stat { font-size: 1.1rem; font-weight: bold; color: #38bdf8; margin-top: 4px; }
-        .warning-box { background: #0284c7; color: white; padding: 10px; border-radius: 6px; font-weight: bold; text-align: center; font-size: 0.85rem; border: 1px solid #38bdf8; }
+        .warning-box { background: #0284c7; color: white; padding: 10px; border-radius: 6px; font-weight: bold; text-align: center; font-size: 0.85rem; border: 1px solid #38bdf8; margin-top: 8px; }
         
         .bar-container { background: #334155; border-radius: 4px; height: 10px; width: 100%; margin-top: 4px; overflow: hidden; }
         .bar-fill { height: 100%; background: #22c55e; transition: width 0.5s ease; }
@@ -74,11 +75,11 @@
     <h3 style="margin:0 0 5px 0;">ROVER GIS COMMAND CENTER</h3>
     
     <div class="card">
-        <div class="cam-wrapper">
+        <div class="cam-wrapper" onclick="startCamera()">
             <video id="webcam-feed" autoplay playsinline muted></video>
-            <div id="cam-status" class="cam-overlay">📷 CAMERA OFFLINE</div>
+            <div id="cam-status" class="cam-overlay">📷 TAP HERE TO START CAMERA</div>
         </div>
-        <div id="warning-alert" class="warning-box"></div>
+        <div id="warning-alert" class="warning-box" style="display:none;"></div>
     </div>
 
     <div class="card">
@@ -132,6 +133,8 @@
 <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
 <script>
     let isPoweredOn = true;
+    let cameraStream = null;
+
     const map = L.map('map').setView([17.4210, 78.6560], 16);
 
     L.tileLayer('http://{s}.google.com/vt/lyrs=m&x={x}&y={y}&z={z}', {
@@ -174,27 +177,66 @@
         });
     });
 
-    async function initCamera() {
-        try {
-            const stream = await navigator.mediaDevices.getUserMedia({ video: true, audio: false });
-            document.getElementById('webcam-feed').srcObject = stream;
-        } catch (err) {
-            console.error("Camera error:", err);
-        }
-    }
-    initCamera();
-
-    function setCameraState(active) {
+    async function startCamera() {
+        if (!isPoweredOn) return;
+        
         const videoElem = document.getElementById('webcam-feed');
         const overlay = document.getElementById('cam-status');
-        if (active && isPoweredOn) {
-            videoElem.classList.add('active');
-            overlay.classList.add('hidden');
-        } else {
-            videoElem.classList.remove('active');
-            overlay.classList.remove('hidden');
+
+        overlay.innerText = "⏳ INITIALIZING CAMERA...";
+
+        try {
+            // Priority setup: Mobile environment camera -> fallback to standard video stream
+            const constraints = {
+                video: { facingMode: { ideal: "environment" }, width: { ideal: 640 }, height: { ideal: 480 } },
+                audio: false
+            };
+
+            cameraStream = await navigator.mediaDevices.getUserMedia(constraints);
+            videoElem.srcObject = cameraStream;
+            
+            videoElem.onloadedmetadata = () => {
+                videoElem.play();
+                videoElem.classList.add('active');
+                overlay.classList.add('hidden');
+            };
+
+        } catch (err) {
+            console.warn("Primary camera constraint failed, falling back to basic camera request...", err);
+            try {
+                cameraStream = await navigator.mediaDevices.getUserMedia({ video: true, audio: false });
+                videoElem.srcObject = cameraStream;
+                videoElem.onloadedmetadata = () => {
+                    videoElem.play();
+                    videoElem.classList.add('active');
+                    overlay.classList.add('hidden');
+                };
+            } catch (fallbackErr) {
+                console.error("Camera access failed:", fallbackErr);
+                overlay.innerText = "⚠️ CAMERA PERMISSION DENIED";
+                alert("Camera access block detected. Ensure site is on HTTPS and permission is set to Allow in browser settings.");
+            }
         }
     }
+
+    function stopCamera() {
+        const videoElem = document.getElementById('webcam-feed');
+        const overlay = document.getElementById('cam-status');
+
+        if (cameraStream) {
+            cameraStream.getTracks().forEach(track => track.stop());
+            cameraStream = null;
+        }
+
+        videoElem.classList.remove('active');
+        overlay.classList.remove('hidden');
+        overlay.innerText = "📷 CAMERA OFFLINE";
+    }
+
+    // Auto-attempt camera start on load
+    window.addEventListener('DOMContentLoaded', () => {
+        startCamera();
+    });
 
     function sendControl(cmd) {
         if (!isPoweredOn && cmd !== 'POWER_OFF') return;
@@ -218,7 +260,7 @@
             document.getElementById('warning-alert').innerText = "🔴 MACHINE & CAMERA POWERED OFF";
             document.getElementById('warning-alert').style.display = 'block';
 
-            setCameraState(false);
+            stopCamera();
             clearRedDots();
         } else {
             isPoweredOn = true;
@@ -228,15 +270,14 @@
             
             document.getElementById('rover-status').innerText = "READY";
             document.getElementById('rover-status').style.color = "#38bdf8";
+            
+            startCamera();
         }
     }
 
     function clearRedDots() {
-        // Remove markers from Leaflet map
         potholeMarkers.forEach(m => map.removeLayer(m));
         potholeMarkers = [];
-
-        // Notify server to clear backend detection data
         fetch('/api/clear_map', { method: 'POST' });
     }
 
@@ -280,8 +321,6 @@
                 document.getElementById('material-text').innerText = `${data.material_level_pct}%`;
                 matBar.style.width = `${data.material_level_pct}%`;
                 matBar.style.backgroundColor = data.material_level_pct < 20 ? '#ef4444' : '#22c55e';
-
-                setCameraState(data.camera_active);
 
                 const warningBox = document.getElementById('warning-alert');
                 if (data.warning_msg) {
@@ -334,7 +373,8 @@
                         potholeMarkers.push(m);
                     });
                 }
-            });
+            })
+            .catch(err => console.error("Telemetry fetch error:", err));
     }, 2500);
 </script>
 
