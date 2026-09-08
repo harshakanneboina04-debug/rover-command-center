@@ -8,34 +8,34 @@ app = Flask(__name__)
 
 WAYPOINTS = [
     (17.42080, 78.65620), # Step 0: Start
-    (17.42050, 78.65540), # Step 1: Pothole 1
+    (17.42050, 78.65540), # Step 1: Pothole 1 (First Run)
     (17.42030, 78.65480), # Step 2: Vehicle 1
-    (17.42010, 78.65410), # Step 3: Pothole 2
+    (17.42010, 78.65410), # Step 3: Pothole 2 (First Run)
     (17.42000, 78.65350), # Step 4
     (17.42010, 78.65280), # Step 5: Vehicle 2
-    (17.42020, 78.65210), # Step 6: Pothole 3
+    (17.42020, 78.65210), # Step 6: Pothole 3 (First Run)
     (17.42050, 78.65140), # Step 7
-    (17.42080, 78.65080), # Step 8: Vehicle 3 (e.g. ~4 km mark)
-    (17.42125, 78.65020), # Step 9: Pothole 4 (After 4 km mark)
-    (17.42170, 78.64960),
-    (17.42215, 78.64880),
-    (17.42260, 78.64800),
-    (17.42320, 78.64690),
-    (17.42380, 78.64580),
-    (17.42440, 78.64465),
-    (17.42500, 78.64350),
-    (17.42560, 78.64225),
-    (17.42620, 78.64100),
-    (17.42700, 78.63950),
-    (17.42780, 78.63800)
+    (17.42080, 78.65080), # Step 8: Abort Point (~4km)
+    (17.42125, 78.65020), # Step 9: Pothole 4 (Detected AFTER 4km on restart)
+    (17.42170, 78.64960), # Step 10
+    (17.42215, 78.64880), # Step 11: Pothole 5 (Detected AFTER 4km on restart)
+    (17.42260, 78.64800), # Step 12
+    (17.42320, 78.64690), # Step 13
+    (17.42380, 78.64580), # Step 14: Pothole 6
+    (17.42440, 78.64465), # Step 15
+    (17.42500, 78.64350), # Step 16
+    (17.42560, 78.64225), # Step 17
+    (17.42620, 78.64100), # Step 18
+    (17.42700, 78.63950), # Step 19
+    (17.42780, 78.63800)  # Step 20
 ]
 
 VEHICLE_STEPS = [2, 5, 8]
-POTHOLE_STEPS = [1, 3, 6, 9]
+POTHOLE_STEPS = [1, 3, 6, 9, 11, 14]  # Potholes placed before and after 4km mark
 
 permanently_repaired_steps = set()
 mission_history = []
-max_step_reached = 0  # Tracks furthest point reached across runs
+max_step_reached = 0  # Saved checkpoint step from previous aborted run
 
 active_waypoints = list(WAYPOINTS)
 
@@ -89,7 +89,7 @@ def set_start_location():
             d_lng = (p[1] - WAYPOINTS[0][1])
             active_waypoints.append((round(lat + d_lat, 5), round(lng + d_lng, 5)))
 
-        max_step_reached = 0  # Reset max progress on changing start spot
+        max_step_reached = 0  # Reset progress history when moving start location
         permanently_repaired_steps.clear()
 
         dashboard_data['start_lat'] = lat
@@ -192,11 +192,12 @@ def handle_telemetry():
                 dashboard_data['distance_traveled_km'] = round(dashboard_data['distance_traveled_km'] + km_increment, 3)
                 current_step = dashboard_data['step_idx']
 
-                # IGNORE ALREADY COVERED ROUTE (UP TO PREVIOUS MAX STEP REACHED)
+                # --- RESUME / DETECTION LOGIC ---
                 if current_step <= max_step_reached and max_step_reached > 0:
-                    dashboard_data['warning_msg'] = f"⏩ FAST TRANSIT: IGNORING PREVIOUSLY COVERED AREA (STEP {current_step}/{max_step_reached})"
+                    # Rover is driving back through the previously completed section (e.g., 0km to 4km)
+                    dashboard_data['warning_msg'] = f"⏩ FAST TRANSIT: IGNORING PREVIOUSLY INSPECTED ROAD ({current_step}/{max_step_reached})"
                 else:
-                    # NEW ROUTE AREA: DETECT POTHOLES HERE
+                    # Rover has CROSSED the previous checkpoint (e.g. past 4km)! Resume detection.
                     if current_step in POTHOLE_STEPS and current_step not in permanently_repaired_steps:
                         mat = round(random.uniform(0.4, 0.9), 2)
                         dashboard_data['total_potholes'] += 1
@@ -212,9 +213,10 @@ def handle_telemetry():
                         })
                         permanently_repaired_steps.add(current_step)
                         dashboard_data['warning_msg'] = f"🚨 NEW POTHOLE DETECTED & REPAIRED AT STEP {current_step}!"
+                    else:
+                        dashboard_data['warning_msg'] = f"🔍 ACTIVE SEARCHING: SCANNING UNINSPECTED ROAD..."
 
-                # Update the max progress reached so far
-                if current_step > max_step_reached:
+                    # Continuously advance the highest point reached
                     max_step_reached = current_step
 
                 if dashboard_data['distance_traveled_km'] >= target_km or dashboard_data['step_idx'] >= len(active_waypoints) - 1:
@@ -241,7 +243,7 @@ def handle_telemetry():
                 dashboard_data['current_lng'] = round(base_lng - 0.00022, 5)
             elif dashboard_data['step_idx'] in recorded_pothole_steps:
                 dashboard_data['avoiding_obstacle'] = True
-                dashboard_data['warning_msg'] = "⚠️ POTHOLE DETECTED! MOVING AWAY FROM AREA..."
+                dashboard_data['warning_msg'] = "⚠️ REPAIRED POTHOLE DETECTED! MOVING AWAY FROM AREA..."
                 dashboard_data['current_lat'] = round(base_lat + 0.00025, 5)
                 dashboard_data['current_lng'] = round(base_lng - 0.00025, 5)
             else:
@@ -256,7 +258,7 @@ def handle_telemetry():
                 dashboard_data['control_state'] = "STOPPED"
                 dashboard_data['returning'] = False
                 dashboard_data['camera_active'] = False
-                dashboard_data['warning_msg'] = f"✅ SAFELY RETURNED. NEXT RUN WILL RESUME SEARCH AFTER STEP {max_step_reached}."
+                dashboard_data['warning_msg'] = f"✅ SAFELY RETURNED. CHECKPOINT SAVED AT STEP {max_step_reached}. RESTART WILL RESUME SEARCH AFTER THIS POINT."
 
                 duration_sec = int(time.time() - (dashboard_data['mission_start_time'] or time.time()))
                 mins, secs = divmod(duration_sec, 60)
