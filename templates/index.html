@@ -3,415 +3,284 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Autonomous Pothole Detection & Repair Machine</title>
+    <title>Rover GIS Command Center</title>
     <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
-    <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
     <style>
-        body { font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif; margin: 0; padding: 0; background-color: #0f172a; color: #f8fafc; }
-        .header { background-color: #1e293b; padding: 15px 25px; display: flex; justify-content: space-between; align-items: center; border-bottom: 2px solid #334155; }
-        .header h1 { margin: 0; font-size: 1.2rem; color: #38bdf8; text-transform: uppercase; letter-spacing: 1px; }
-        .alert-bar { background-color: #0284c7; color: #fff; padding: 10px 20px; font-weight: bold; font-size: 0.9rem; text-align: center; }
-        .container { display: flex; height: calc(100vh - 105px); }
-        .sidebar { width: 350px; background-color: #1e293b; padding: 20px; overflow-y: auto; border-right: 1px solid #334155; display: flex; flex-direction: column; gap: 15px; }
-        #map { flex-grow: 1; height: 100%; }
-        .btn-group { display: flex; gap: 10px; flex-wrap: wrap; }
-        button { flex: 1; min-width: 90px; padding: 12px; border: none; border-radius: 6px; font-weight: bold; cursor: pointer; transition: all 0.2s ease; text-transform: uppercase; }
-        .btn-start { background-color: #16a34a; color: white; }
-        .btn-pause { background-color: #eab308; color: black; }
-        .btn-stop { background-color: #dc2626; color: white; }
-        .btn-power { background-color: #475569; color: white; }
-        .btn-power.off { background-color: #991b1b; }
-        .btn-clear { background-color: #64748b; color: white; margin-top: 10px; width: 100%; }
-        button:hover { opacity: 0.85; transform: translateY(-1px); }
-        .card { background-color: #0f172a; padding: 15px; border-radius: 8px; border: 1px solid #334155; }
-        .card-title { font-size: 0.8rem; color: #94a3b8; text-transform: uppercase; margin-bottom: 8px; }
-        .card-value { font-size: 1.4rem; font-weight: bold; color: #f8fafc; }
-        .history-list { font-size: 0.85rem; max-height: 150px; overflow-y: auto; display: flex; flex-direction: column; gap: 8px; }
-        .history-item { background: #334155; padding: 8px; border-radius: 4px; }
+        * { box-sizing: border-box; }
+        body { margin: 0; padding: 0; background-color: #0f172a; color: #f8fafc; font-family: sans-serif; display: flex; height: 100vh; overflow: hidden; }
+        
+        #history-bar { width: 320px; background: #090d16; padding: 15px; border-right: 1px solid #1e293b; display: flex; flex-direction: column; gap: 10px; overflow-y: auto; }
+        #sidebar { width: 360px; padding: 15px; display: flex; flex-direction: column; gap: 12px; background: #1e293b; z-index: 1000; overflow-y: auto; }
+        #map { flex-grow: 1; height: 100%; cursor: crosshair; }
+        
+        .card { background: #0f172a; padding: 12px; border-radius: 8px; border: 1px solid #334155; }
+        
+        .cam-wrapper {
+            position: relative; width: 100%; height: 150px; background: #000;
+            border-radius: 6px; border: 1px solid #475569; overflow: hidden;
+        }
+
+        #webcam-feed { width: 100%; height: 100%; object-fit: cover; display: block; opacity: 0; transition: opacity 0.8s ease-in-out; }
+        #webcam-feed.active { opacity: 1; }
+
+        .cam-overlay {
+            position: absolute; top: 0; left: 0; width: 100%; height: 100%;
+            display: flex; align-items: center; justify-content: center;
+            background: rgba(15, 23, 42, 0.85); color: #94a3b8; font-size: 0.85rem; font-weight: bold; pointer-events: none;
+        }
+
+        .cam-overlay.hidden { opacity: 0; }
+
+        .btn-group { display: flex; gap: 8px; margin-top: 10px; }
+        button { flex: 1; padding: 10px; border: none; border-radius: 4px; font-weight: bold; cursor: pointer; color: white; }
+        .btn-start { background: #22c55e; }
+        .btn-pause { background: #eab308; }
+        .btn-stop { background: #ef4444; }
+        .stat { font-size: 1.1rem; font-weight: bold; color: #38bdf8; margin-top: 4px; }
+        .warning-box { background: #0284c7; color: white; padding: 10px; border-radius: 6px; font-weight: bold; text-align: center; font-size: 0.85rem; border: 1px solid #38bdf8; }
+        
+        .bar-container { background: #334155; border-radius: 4px; height: 10px; width: 100%; margin-top: 4px; overflow: hidden; }
+        .bar-fill { height: 100%; background: #22c55e; transition: width 0.5s ease; }
+
+        .pothole-list, .history-list { max-height: 200px; overflow-y: auto; margin-top: 8px; font-size: 0.8rem; }
+        .pothole-item { display: flex; justify-content: space-between; padding: 4px 6px; background: #1e293b; border-radius: 4px; margin-bottom: 4px; border-left: 3px solid #eab308; }
+        
+        .history-item { background: #1e293b; border-radius: 6px; padding: 10px; margin-bottom: 8px; border-left: 3px solid #38bdf8; font-size: 0.78rem; }
+        .history-item div { margin-bottom: 3px; }
+
+        .robot-marker-icon {
+            background: #0284c7; border: 2px solid #ffffff; border-radius: 50%;
+            display: flex; align-items: center; justify-content: center;
+            box-shadow: 0 0 12px #38bdf8; transition: transform 0.3s ease;
+        }
     </style>
 </head>
 <body>
 
-    <div class="header">
-        <h1>🤖 Autonomous Road Repair System</h1>
-        <div id="status-badge" style="background:#16a34a; padding: 5px 12px; border-radius: 12px; font-size: 0.85rem; font-weight: bold;">CONNECTED</div>
+<div id="history-bar">
+    <h4 style="margin:0 0 5px 0; color:#38bdf8;">📜 MISSION HISTORY</h4>
+    <div style="font-size:0.75rem; color:#94a3b8; margin-bottom:8px;">Logs date, time, duration, return coordinates & skipped repaired spots.</div>
+    <div id="history-log-list" class="history-list" style="max-height: calc(100vh - 80px);">
+        <div style="color: #64748b; font-style: italic; padding: 4px;">No previous mission records found.</div>
+    </div>
+</div>
+
+<div id="sidebar">
+    <h3 style="margin:0 0 5px 0;">ROVER GIS COMMAND CENTER</h3>
+    
+    <div class="card">
+        <div class="cam-wrapper">
+            <video id="webcam-feed" autoplay playsinline muted></video>
+            <div id="cam-status" class="cam-overlay">📷 CAMERA OFFLINE</div>
+        </div>
+        <div id="warning-alert" class="warning-box"></div>
     </div>
 
-    <div id="warning-bar" class="alert-bar">💡 CLICK ANYWHERE ON THE MAP TO SET A CUSTOM STARTING POINT.</div>
+    <div class="card">
+        <label style="font-size: 0.85rem; font-weight: bold;">TARGET ROUTE DISTANCE</label>
+        <select id="target-km" onchange="updateConfig()" style="width: 100%; padding: 8px; margin-top: 5px; background: #1e293b; color: white; border: 1px solid #475569; border-radius: 4px;">
+            <option value="0.05">0.05 km (50m Demo)</option>
+            <option value="0.5">0.5 km</option>
+            <option value="1.0">1.0 km</option>
+            <option value="5.0">5.0 km</option>
+            <option value="10.0" selected>10.0 km</option>
+        </select>
+        <div class="btn-group">
+            <button class="btn-start" onclick="sendControl('START')">▶ START</button>
+            <button class="btn-pause" onclick="sendControl('PAUSE')">⏸ PAUSE</button>
+            <button class="btn-stop" onclick="sendControl('STOP')">⏹ ABORT & RETURN</button>
+        </div>
+    </div>
 
-    <div class="container">
-        <div class="sidebar">
-            <div class="card">
-                <div class="card-title">Machine Controls</div>
-                <div class="btn-group">
-                    <button class="btn-start" onclick="sendCommand('START')">▶ Start</button>
-                    <button class="btn-pause" onclick="sendCommand('PAUSE')">⏸ Pause</button>
-                    <button class="btn-stop" onclick="sendCommand('STOP')">⏹ Abort</button>
-                </div>
-                <div style="margin-top: 10px;">
-                    <button id="power-btn" class="btn-power" onclick="togglePower()">⚡ Power Off</button>
-                </div>
-            </div>
-
-            <div class="card">
-                <div class="card-title">Live Telemetry</div>
-                <div>Status: <span id="rover-status" style="color: #38bdf8; font-weight: bold;">READY</span></div>
-                <div>Distance: <span id="dist-val">0.0</span> km</div>
-                <div>Battery: <span id="bat-val">100</span>%</div>
-                <div>Material: <span id="mat-val">100</span>%</div>
-            </div>
-
-            <div class="card">
-                <div class="card-title">Detection Summary</div>
-                <div class="card-value"><span id="pothole-count">0</span> Potholes Repaired</div>
-                <div style="font-size: 0.9rem; color: #94a3b8; margin-top: 5px;">Total Material Used: <span id="mat-used">0.0</span> kg</div>
-            </div>
-
-            <div class="card">
-                <div class="card-title">Mission History</div>
-                <div id="history-container" class="history-list">
-                    <i>No completed runs logged.</i>
-                </div>
-                <button class="btn-clear" onclick="clearHistory()">🗑️ Clear History</button>
-            </div>
+    <div class="card">
+        <div style="font-size: 0.9rem;">STATUS: <span id="rover-status" class="stat">READY</span></div>
+        <div style="margin-top: 6px; font-size: 0.9rem;">DISTANCE COVERED: <br><span id="distance-km" class="stat">0 / 10.0 km</span></div>
+        <div style="margin-top: 6px; font-size: 0.8rem; color:#facc15;">START SPOT: <span id="start-coords">17.4208, 78.6562</span></div>
+        
+        <div style="margin-top: 8px; font-size: 0.8rem; font-weight: bold;">
+            BATTERY: <span id="battery-text" style="color:#22c55e;">100%</span>
+            <div class="bar-container"><div id="battery-bar" class="bar-fill" style="width: 100%;"></div></div>
         </div>
 
-        <div id="map"></div>
+        <div style="margin-top: 8px; font-size: 0.8rem; font-weight: bold;">
+            MATERIAL LEVEL: <span id="material-text" style="color:#22c55e;">100%</span>
+            <div class="bar-container"><div id="material-bar" class="bar-fill" style="width: 100%;"></div></div>
+        </div>
     </div>
 
-    <script>
-        let isPoweredOn = true;
-        let map = L.map('map').setView([17.42080, 78.65620], 15);
-        
-        L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
-            maxZoom: 19
-        }).addTo(map);
+    <div class="card">
+        <div style="font-size: 0.85rem; font-weight: bold; color: #facc15;">DETECTED POTHOLE DATA</div>
+        <div style="display:flex; justify-content:space-between; margin-top:4px; font-size:0.85rem;">
+            <span>TOTAL COUNT: <b id="potholes-count" style="color:#38bdf8;">0</b></span>
+            <span>USED: <b id="material-kg" style="color:#38bdf8;">0 kg</b></span>
+        </div>
+        <div id="pothole-log-list" class="pothole-list">
+            <div style="color: #64748b; font-style: italic; padding: 4px;">No potholes detected yet.</div>
+        </div>
+    </div>
+</div>
 
-        let roverMarker = L.marker([17.42080, 78.65620]).addTo(map).bindPopup("Rover Position");
-        let potholeMarkers = [];
+<div id="map"></div>
 
-        map.on('click', function(e) {
-            if (!isPoweredOn) return;
-            fetch('/api/set_start', {
-                method: 'POST',
-                headers: {'Content-Type': 'application/json'},
-                body: JSON.stringify({lat: e.latlng.lat, lng: e.latlng.lng})
-            }).then(res => res.json()).then(data => {
-                if (data.status === 'success') {
-                    roverMarker.setLatLng([data.lat, data.lng]);
-                }
-            });
+<script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+<script>
+    const map = L.map('map').setView([17.4210, 78.6560], 16);
+
+    L.tileLayer('http://{s}.google.com/vt/lyrs=m&x={x}&y={y}&z={z}', {
+        maxZoom: 20, subdomains: ['mt0', 'mt1', 'mt2', 'mt3']
+    }).addTo(map);
+
+    const robotSvg = `
+    <svg width="24" height="24" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
+        <rect x="5" y="7" width="14" height="12" rx="3" fill="#38bdf8" stroke="#ffffff" stroke-width="2"/>
+        <circle cx="9" cy="11" r="1.5" fill="#0f172a"/>
+        <circle cx="15" cy="11" r="1.5" fill="#0f172a"/>
+        <line x1="12" y1="2" x2="12" y2="7" stroke="#ffffff" stroke-width="2"/>
+        <circle cx="12" cy="2" r="1.5" fill="#ef4444"/>
+        <rect x="8" y="15" width="8" height="2" rx="1" fill="#0f172a"/>
+    </svg>`;
+
+    const robotIcon = L.divIcon({
+        className: 'robot-marker-icon', html: robotSvg, iconSize: [32, 32], iconAnchor: [16, 16]
+    });
+
+    let roverMarker = L.marker([17.42080, 78.65620], {icon: robotIcon}).addTo(map);
+    let startMarker = L.marker([17.42080, 78.65620]).addTo(map).bindPopup("<b>Start Location</b>");
+    let potholeMarkers = [];
+
+    // Click map to select custom start position when stopped
+    map.on('click', function(e) {
+        fetch('/api/set_start', {
+            method: 'POST',
+            headers: {'Content-Type': 'application/json'},
+            body: JSON.stringify({lat: e.latlng.lat, lng: e.latlng.lng})
+        })
+        .then(res => res.json())
+        .then(data => {
+            if (data.status === "success") {
+                const newPos = [data.lat, data.lng];
+                roverMarker.setLatLng(newPos);
+                startMarker.setLatLng(newPos).bindPopup(`<b>Custom Start Point</b><br>${data.lat.toFixed(4)}, ${data.lng.toFixed(4)}`).openPopup();
+                document.getElementById('start-coords').innerText = `${data.lat.toFixed(4)}, ${data.lng.toFixed(4)}`;
+            }
         });
+    });
 
-        function sendCommand(cmd) {
-            if (!isPoweredOn && cmd !== 'POWER_OFF') return;
-            fetch('/api/control', {
-                method: 'POST',
-                headers: {'Content-Type': 'application/json'},
-                body: JSON.stringify({command: cmd})
-            });
+    async function initCamera() {
+        try {
+            const stream = await navigator.mediaDevices.getUserMedia({ video: true, audio: false });
+            document.getElementById('webcam-feed').srcObject = stream;
+        } catch (err) {
+            console.error("Camera error:", err);
         }
+    }
+    initCamera();
 
-        function togglePower() {
-            let btn = document.getElementById('power-btn');
-            if (isPoweredOn) {
-                // POWER OFF: Cut connection & clear red dots
-                sendCommand('POWER_OFF');
-                isPoweredOn = false;
-                btn.innerText = "⚡ Power On";
-                btn.classList.add('off');
-                document.getElementById('status-badge').innerText = "DISCONNECTED";
-                document.getElementById('status-badge').style.background = "#dc2626";
-                clearMapRedDots();
-            } else {
-                // POWER ON: Re-establish connection
-                isPoweredOn = true;
-                btn.innerText = "⚡ Power Off";
-                btn.classList.remove('off');
-                document.getElementById('status-badge').innerText = "CONNECTED";
-                document.getElementById('status-badge').style.background = "#16a34a";
-                fetch('/api/control', {
-                    method: 'POST',
-                    headers: {'Content-Type': 'application/json'},
-                    body: JSON.stringify({command: 'STOP'})
-                });
-            }
+    function setCameraState(active) {
+        const videoElem = document.getElementById('webcam-feed');
+        const overlay = document.getElementById('cam-status');
+        if (active) {
+            videoElem.classList.add('active');
+            overlay.classList.add('hidden');
+        } else {
+            videoElem.classList.remove('active');
+            overlay.classList.remove('hidden');
         }
+    }
 
-        function clearMapRedDots() {
-            potholeMarkers.forEach(m => map.removeLayer(m));
-            potholeMarkers = [];
-        }
+    function sendControl(cmd) {
+        fetch('/api/control', {
+            method: 'POST',
+            headers: {'Content-Type': 'application/json'},
+            body: JSON.stringify({command: cmd})
+        });
+    }
 
-        function clearHistory() {
-            if (confirm("Are you sure you want to permanently delete all mission history?")) {
-                fetch('/api/clear_history', { method: 'POST' })
-                .then(res => res.json())
-                .then(data => {
-                    document.getElementById('history-container').innerHTML = "<i>No completed runs logged.</i>";
-                    clearMapRedDots();
-                });
-            }
-        }
+    function updateConfig() {
+        const val = document.getElementById('target-km').value;
+        fetch('/api/config', {
+            method: 'POST',
+            headers: {'Content-Type': 'application/json'},
+            body: JSON.stringify({target_km: val})
+        });
+    }
 
-        function pollTelemetry() {
-            if (!isPoweredOn) return;
-
-            fetch('/api/telemetry')
+    setInterval(() => {
+        fetch('/api/telemetry')
             .then(res => res.json())
             .then(data => {
                 document.getElementById('rover-status').innerText = data.rover_status;
-                document.getElementById('dist-val').innerText = data.distance_traveled_km;
-                document.getElementById('bat-val').innerText = data.battery_pct;
-                document.getElementById('mat-val').innerText = data.material_level_pct;
-                document.getElementById('pothole-count').innerText = data.total_potholes;
-                document.getElementById('mat-used').innerText = data.total_material_kg;
-                document.getElementById('warning-bar').innerText = data.warning_msg || "💡 SYSTEM READY";
+                document.getElementById('distance-km').innerText = `${data.distance_traveled_km} / ${data.target_km} km`;
+                document.getElementById('potholes-count').innerText = data.total_potholes;
+                document.getElementById('material-kg').innerText = `${data.total_material_kg} kg`;
+                document.getElementById('start-coords').innerText = `${data.start_lat.toFixed(4)}, ${data.start_lng.toFixed(4)}`;
 
-                roverMarker.setLatLng([data.current_lat, data.current_lng]);
+                const batBar = document.getElementById('battery-bar');
+                document.getElementById('battery-text').innerText = `${data.battery_pct}%`;
+                batBar.style.width = `${data.battery_pct}%`;
+                batBar.style.backgroundColor = data.battery_pct < 25 ? '#ef4444' : '#22c55e';
 
-                // Render Pothole Markers (Red Dots)
-                if (data.detections.length === 0) {
-                    clearMapRedDots();
+                const matBar = document.getElementById('material-bar');
+                document.getElementById('material-text').innerText = `${data.material_level_pct}%`;
+                matBar.style.width = `${data.material_level_pct}%`;
+                matBar.style.backgroundColor = data.material_level_pct < 20 ? '#ef4444' : '#22c55e';
+
+                setCameraState(data.camera_active);
+
+                const warningBox = document.getElementById('warning-alert');
+                if (data.warning_msg) {
+                    warningBox.innerText = data.warning_msg;
+                    warningBox.style.display = 'block';
                 } else {
-                    data.detections.forEach(det => {
-                        let exists = potholeMarkers.some(m => m.options.id === det.id);
-                        if (!exists) {
-                            let circle = L.circleMarker([det.lat, det.lng], {
-                                color: '#dc2626',
-                                fillColor: '#facc15',
-                                fillOpacity: 0.9,
-                                radius: 8,
-                                id: det.id
-                            }).addTo(map).bindPopup(`<b>${det.id}</b><br>Material: ${det.mat} kg`);
-                            potholeMarkers.push(circle);
-                        }
-                    });
+                    warningBox.style.display = 'none';
                 }
 
-                // Render History List
-                if (data.mission_history && data.mission_history.length > 0) {
-                    let html = '';
-                    data.mission_history.forEach(run => {
-                        html += `<div class="history-item">
-                            <b>${run.id}</b> | ${run.duration}<br>
-                            Potholes: ${run.potholes_filled} | Material: ${run.material_used}
-                        </div>`;
-                    });
-                    document.getElementById('history-container').innerHTML = html;
-                }
-            });
-        }
+                const pos = [data.current_lat, data.current_lng];
+                roverMarker.setLatLng(pos);
 
-        setInterval(pollTelemetry, 1000);
-    </script>
-</body>
-</html><!DOCTYPE html>
-<html lang="en">
-<head>
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Autonomous Pothole Detection & Repair Machine</title>
-    <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
-    <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
-    <style>
-        body { font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif; margin: 0; padding: 0; background-color: #0f172a; color: #f8fafc; }
-        .header { background-color: #1e293b; padding: 15px 25px; display: flex; justify-content: space-between; align-items: center; border-bottom: 2px solid #334155; }
-        .header h1 { margin: 0; font-size: 1.2rem; color: #38bdf8; text-transform: uppercase; letter-spacing: 1px; }
-        .alert-bar { background-color: #0284c7; color: #fff; padding: 10px 20px; font-weight: bold; font-size: 0.9rem; text-align: center; }
-        .container { display: flex; height: calc(100vh - 105px); }
-        .sidebar { width: 350px; background-color: #1e293b; padding: 20px; overflow-y: auto; border-right: 1px solid #334155; display: flex; flex-direction: column; gap: 15px; }
-        #map { flex-grow: 1; height: 100%; }
-        .btn-group { display: flex; gap: 10px; flex-wrap: wrap; }
-        button { flex: 1; min-width: 90px; padding: 12px; border: none; border-radius: 6px; font-weight: bold; cursor: pointer; transition: all 0.2s ease; text-transform: uppercase; }
-        .btn-start { background-color: #16a34a; color: white; }
-        .btn-pause { background-color: #eab308; color: black; }
-        .btn-stop { background-color: #dc2626; color: white; }
-        .btn-power { background-color: #475569; color: white; }
-        .btn-power.off { background-color: #991b1b; }
-        .btn-clear { background-color: #64748b; color: white; margin-top: 10px; width: 100%; }
-        button:hover { opacity: 0.85; transform: translateY(-1px); }
-        .card { background-color: #0f172a; padding: 15px; border-radius: 8px; border: 1px solid #334155; }
-        .card-title { font-size: 0.8rem; color: #94a3b8; text-transform: uppercase; margin-bottom: 8px; }
-        .card-value { font-size: 1.4rem; font-weight: bold; color: #f8fafc; }
-        .history-list { font-size: 0.85rem; max-height: 150px; overflow-y: auto; display: flex; flex-direction: column; gap: 8px; }
-        .history-item { background: #334155; padding: 8px; border-radius: 4px; }
-    </style>
-</head>
-<body>
-
-    <div class="header">
-        <h1>🤖 Autonomous Road Repair System</h1>
-        <div id="status-badge" style="background:#16a34a; padding: 5px 12px; border-radius: 12px; font-size: 0.85rem; font-weight: bold;">CONNECTED</div>
-    </div>
-
-    <div id="warning-bar" class="alert-bar">💡 CLICK ANYWHERE ON THE MAP TO SET A CUSTOM STARTING POINT.</div>
-
-    <div class="container">
-        <div class="sidebar">
-            <div class="card">
-                <div class="card-title">Machine Controls</div>
-                <div class="btn-group">
-                    <button class="btn-start" onclick="sendCommand('START')">▶ Start</button>
-                    <button class="btn-pause" onclick="sendCommand('PAUSE')">⏸ Pause</button>
-                    <button class="btn-stop" onclick="sendCommand('STOP')">⏹ Abort</button>
-                </div>
-                <div style="margin-top: 10px;">
-                    <button id="power-btn" class="btn-power" onclick="togglePower()">⚡ Power Off</button>
-                </div>
-            </div>
-
-            <div class="card">
-                <div class="card-title">Live Telemetry</div>
-                <div>Status: <span id="rover-status" style="color: #38bdf8; font-weight: bold;">READY</span></div>
-                <div>Distance: <span id="dist-val">0.0</span> km</div>
-                <div>Battery: <span id="bat-val">100</span>%</div>
-                <div>Material: <span id="mat-val">100</span>%</div>
-            </div>
-
-            <div class="card">
-                <div class="card-title">Detection Summary</div>
-                <div class="card-value"><span id="pothole-count">0</span> Potholes Repaired</div>
-                <div style="font-size: 0.9rem; color: #94a3b8; margin-top: 5px;">Total Material Used: <span id="mat-used">0.0</span> kg</div>
-            </div>
-
-            <div class="card">
-                <div class="card-title">Mission History</div>
-                <div id="history-container" class="history-list">
-                    <i>No completed runs logged.</i>
-                </div>
-                <button class="btn-clear" onclick="clearHistory()">🗑️ Clear History</button>
-            </div>
-        </div>
-
-        <div id="map"></div>
-    </div>
-
-    <script>
-        let isPoweredOn = true;
-        let map = L.map('map').setView([17.42080, 78.65620], 15);
-        
-        L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
-            maxZoom: 19
-        }).addTo(map);
-
-        let roverMarker = L.marker([17.42080, 78.65620]).addTo(map).bindPopup("Rover Position");
-        let potholeMarkers = [];
-
-        map.on('click', function(e) {
-            if (!isPoweredOn) return;
-            fetch('/api/set_start', {
-                method: 'POST',
-                headers: {'Content-Type': 'application/json'},
-                body: JSON.stringify({lat: e.latlng.lat, lng: e.latlng.lng})
-            }).then(res => res.json()).then(data => {
-                if (data.status === 'success') {
-                    roverMarker.setLatLng([data.lat, data.lng]);
-                }
-            });
-        });
-
-        function sendCommand(cmd) {
-            if (!isPoweredOn && cmd !== 'POWER_OFF') return;
-            fetch('/api/control', {
-                method: 'POST',
-                headers: {'Content-Type': 'application/json'},
-                body: JSON.stringify({command: cmd})
-            });
-        }
-
-        function togglePower() {
-            let btn = document.getElementById('power-btn');
-            if (isPoweredOn) {
-                // POWER OFF: Cut connection & clear red dots
-                sendCommand('POWER_OFF');
-                isPoweredOn = false;
-                btn.innerText = "⚡ Power On";
-                btn.classList.add('off');
-                document.getElementById('status-badge').innerText = "DISCONNECTED";
-                document.getElementById('status-badge').style.background = "#dc2626";
-                clearMapRedDots();
-            } else {
-                // POWER ON: Re-establish connection
-                isPoweredOn = true;
-                btn.innerText = "⚡ Power Off";
-                btn.classList.remove('off');
-                document.getElementById('status-badge').innerText = "CONNECTED";
-                document.getElementById('status-badge').style.background = "#16a34a";
-                fetch('/api/control', {
-                    method: 'POST',
-                    headers: {'Content-Type': 'application/json'},
-                    body: JSON.stringify({command: 'STOP'})
-                });
-            }
-        }
-
-        function clearMapRedDots() {
-            potholeMarkers.forEach(m => map.removeLayer(m));
-            potholeMarkers = [];
-        }
-
-        function clearHistory() {
-            if (confirm("Are you sure you want to permanently delete all mission history?")) {
-                fetch('/api/clear_history', { method: 'POST' })
-                .then(res => res.json())
-                .then(data => {
-                    document.getElementById('history-container').innerHTML = "<i>No completed runs logged.</i>";
-                    clearMapRedDots();
-                });
-            }
-        }
-
-        function pollTelemetry() {
-            if (!isPoweredOn) return;
-
-            fetch('/api/telemetry')
-            .then(res => res.json())
-            .then(data => {
-                document.getElementById('rover-status').innerText = data.rover_status;
-                document.getElementById('dist-val').innerText = data.distance_traveled_km;
-                document.getElementById('bat-val').innerText = data.battery_pct;
-                document.getElementById('mat-val').innerText = data.material_level_pct;
-                document.getElementById('pothole-count').innerText = data.total_potholes;
-                document.getElementById('mat-used').innerText = data.total_material_kg;
-                document.getElementById('warning-bar').innerText = data.warning_msg || "💡 SYSTEM READY";
-
-                roverMarker.setLatLng([data.current_lat, data.current_lng]);
-
-                // Render Pothole Markers (Red Dots)
-                if (data.detections.length === 0) {
-                    clearMapRedDots();
+                const logContainer = document.getElementById('pothole-log-list');
+                if (data.detections.length > 0) {
+                    logContainer.innerHTML = data.detections.map(det => `
+                        <div class="pothole-item">
+                            <span><b>${det.id}</b> (${det.lat.toFixed(4)}, ${det.lng.toFixed(4)})</span>
+                            <span style="color:#22c55e;">${det.mat} kg</span>
+                        </div>
+                    `).join('');
                 } else {
-                    data.detections.forEach(det => {
-                        let exists = potholeMarkers.some(m => m.options.id === det.id);
-                        if (!exists) {
-                            let circle = L.circleMarker([det.lat, det.lng], {
-                                color: '#dc2626',
-                                fillColor: '#facc15',
-                                fillOpacity: 0.9,
-                                radius: 8,
-                                id: det.id
-                            }).addTo(map).bindPopup(`<b>${det.id}</b><br>Material: ${det.mat} kg`);
-                            potholeMarkers.push(circle);
-                        }
-                    });
+                    logContainer.innerHTML = `<div style="color: #64748b; font-style: italic; padding: 4px;">No potholes detected yet.</div>`;
                 }
 
-                // Render History List
+                const historyContainer = document.getElementById('history-log-list');
                 if (data.mission_history && data.mission_history.length > 0) {
-                    let html = '';
-                    data.mission_history.forEach(run => {
-                        html += `<div class="history-item">
-                            <b>${run.id}</b> | ${run.duration}<br>
-                            Potholes: ${run.potholes_filled} | Material: ${run.material_used}
-                        </div>`;
+                    historyContainer.innerHTML = data.mission_history.map(h => `
+                        <div class="history-item">
+                            <div style="color:#facc15; font-weight:bold;">${h.id} — ${h.timestamp}</div>
+                            <div><b>Start:</b> ${h.start_place}</div>
+                            <div><b>Return Loc:</b> ${h.return_place}</div>
+                            <div><b>Time Taken:</b> ${h.duration}</div>
+                            <div><b>Filled:</b> ${h.potholes_filled} potholes (${h.material_used})</div>
+                        </div>
+                    `).join('');
+                }
+
+                if (data.detections.length === 0 && potholeMarkers.length > 0) {
+                    potholeMarkers.forEach(m => map.removeLayer(m));
+                    potholeMarkers = [];
+                }
+
+                if (data.detections.length > potholeMarkers.length) {
+                    data.detections.slice(potholeMarkers.length).forEach(det => {
+                        const m = L.circleMarker([det.lat, det.lng], {
+                            color: '#ef4444', fillColor: '#facc15', fillOpacity: 0.9, radius: 8
+                        }).addTo(map);
+
+                        m.bindPopup(`<b>${det.id} Detected</b><br>Lat: ${det.lat}<br>Lng: ${det.lng}<br>Fill Material: ${det.mat} kg`);
+                        potholeMarkers.push(m);
                     });
-                    document.getElementById('history-container').innerHTML = html;
                 }
             });
-        }
+    }, 2500);
+</script>
 
-        setInterval(pollTelemetry, 1000);
-    </script>
 </body>
 </html>
