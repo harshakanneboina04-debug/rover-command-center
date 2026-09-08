@@ -9,10 +9,9 @@
         * { box-sizing: border-box; }
         body { margin: 0; padding: 0; background-color: #0f172a; color: #f8fafc; font-family: sans-serif; display: flex; height: 100vh; overflow: hidden; }
         
-        /* Left History Panel */
         #history-bar { width: 320px; background: #090d16; padding: 15px; border-right: 1px solid #1e293b; display: flex; flex-direction: column; gap: 10px; overflow-y: auto; }
         #sidebar { width: 360px; padding: 15px; display: flex; flex-direction: column; gap: 12px; background: #1e293b; z-index: 1000; overflow-y: auto; }
-        #map { flex-grow: 1; height: 100%; }
+        #map { flex-grow: 1; height: 100%; cursor: crosshair; }
         
         .card { background: #0f172a; padding: 12px; border-radius: 8px; border: 1px solid #334155; }
         
@@ -38,7 +37,7 @@
         .btn-pause { background: #eab308; }
         .btn-stop { background: #ef4444; }
         .stat { font-size: 1.1rem; font-weight: bold; color: #38bdf8; margin-top: 4px; }
-        .warning-box { background: #ef4444; color: white; padding: 10px; border-radius: 6px; font-weight: bold; text-align: center; display: none; margin-top: 8px; font-size: 0.85rem; border: 1px solid #f87171; }
+        .warning-box { background: #0284c7; color: white; padding: 10px; border-radius: 6px; font-weight: bold; text-align: center; font-size: 0.85rem; border: 1px solid #38bdf8; }
         
         .bar-container { background: #334155; border-radius: 4px; height: 10px; width: 100%; margin-top: 4px; overflow: hidden; }
         .bar-fill { height: 100%; background: #22c55e; transition: width 0.5s ease; }
@@ -58,7 +57,6 @@
 </head>
 <body>
 
-<!-- Left History Settings Bar -->
 <div id="history-bar">
     <h4 style="margin:0 0 5px 0; color:#38bdf8;">📜 MISSION HISTORY</h4>
     <div style="font-size:0.75rem; color:#94a3b8; margin-bottom:8px;">Logs date, time, duration, return coordinates & skipped repaired spots.</div>
@@ -67,7 +65,6 @@
     </div>
 </div>
 
-<!-- Main Control Panel -->
 <div id="sidebar">
     <h3 style="margin:0 0 5px 0;">ROVER GIS COMMAND CENTER</h3>
     
@@ -80,7 +77,7 @@
     </div>
 
     <div class="card">
-        <label style="font-size: 0.85rem; font-weight: bold;">TARGET ROUTE: VENKATAPUR RD</label>
+        <label style="font-size: 0.85rem; font-weight: bold;">TARGET ROUTE DISTANCE</label>
         <select id="target-km" onchange="updateConfig()" style="width: 100%; padding: 8px; margin-top: 5px; background: #1e293b; color: white; border: 1px solid #475569; border-radius: 4px;">
             <option value="0.05">0.05 km (50m Demo)</option>
             <option value="0.5">0.5 km</option>
@@ -98,6 +95,7 @@
     <div class="card">
         <div style="font-size: 0.9rem;">STATUS: <span id="rover-status" class="stat">READY</span></div>
         <div style="margin-top: 6px; font-size: 0.9rem;">DISTANCE COVERED: <br><span id="distance-km" class="stat">0 / 10.0 km</span></div>
+        <div style="margin-top: 6px; font-size: 0.8rem; color:#facc15;">START SPOT: <span id="start-coords">17.4208, 78.6562</span></div>
         
         <div style="margin-top: 8px; font-size: 0.8rem; font-weight: bold;">
             BATTERY: <span id="battery-text" style="color:#22c55e;">100%</span>
@@ -146,8 +144,27 @@
         className: 'robot-marker-icon', html: robotSvg, iconSize: [32, 32], iconAnchor: [16, 16]
     });
 
-    let roverMarker = L.marker([17.4210, 78.6560], {icon: robotIcon}).addTo(map);
+    let roverMarker = L.marker([17.42080, 78.65620], {icon: robotIcon}).addTo(map);
+    let startMarker = L.marker([17.42080, 78.65620]).addTo(map).bindPopup("<b>Start Location</b>");
     let potholeMarkers = [];
+
+    // Click map to select custom start position when stopped
+    map.on('click', function(e) {
+        fetch('/api/set_start', {
+            method: 'POST',
+            headers: {'Content-Type': 'application/json'},
+            body: JSON.stringify({lat: e.latlng.lat, lng: e.latlng.lng})
+        })
+        .then(res => res.json())
+        .then(data => {
+            if (data.status === "success") {
+                const newPos = [data.lat, data.lng];
+                roverMarker.setLatLng(newPos);
+                startMarker.setLatLng(newPos).bindPopup(`<b>Custom Start Point</b><br>${data.lat.toFixed(4)}, ${data.lng.toFixed(4)}`).openPopup();
+                document.getElementById('start-coords').innerText = `${data.lat.toFixed(4)}, ${data.lng.toFixed(4)}`;
+            }
+        });
+    });
 
     async function initCamera() {
         try {
@@ -196,6 +213,7 @@
                 document.getElementById('distance-km').innerText = `${data.distance_traveled_km} / ${data.target_km} km`;
                 document.getElementById('potholes-count').innerText = data.total_potholes;
                 document.getElementById('material-kg').innerText = `${data.total_material_kg} kg`;
+                document.getElementById('start-coords').innerText = `${data.start_lat.toFixed(4)}, ${data.start_lng.toFixed(4)}`;
 
                 const batBar = document.getElementById('battery-bar');
                 document.getElementById('battery-text').innerText = `${data.battery_pct}%`;
@@ -219,9 +237,7 @@
 
                 const pos = [data.current_lat, data.current_lng];
                 roverMarker.setLatLng(pos);
-                map.panTo(pos);
 
-                // Update Pothole Log
                 const logContainer = document.getElementById('pothole-log-list');
                 if (data.detections.length > 0) {
                     logContainer.innerHTML = data.detections.map(det => `
@@ -234,7 +250,6 @@
                     logContainer.innerHTML = `<div style="color: #64748b; font-style: italic; padding: 4px;">No potholes detected yet.</div>`;
                 }
 
-                // Update Mission History Sidebar
                 const historyContainer = document.getElementById('history-log-list');
                 if (data.mission_history && data.mission_history.length > 0) {
                     historyContainer.innerHTML = data.mission_history.map(h => `
