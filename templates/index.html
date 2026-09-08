@@ -36,6 +36,9 @@
         .btn-start { background: #22c55e; }
         .btn-pause { background: #eab308; }
         .btn-stop { background: #ef4444; }
+        .btn-power { background: #475569; width: 100%; margin-top: 8px; }
+        .btn-power.off { background: #16a34a; }
+        .btn-clear-history { background: #dc2626; width: 100%; margin-top: 8px; padding: 8px; font-size: 0.8rem; }
         .stat { font-size: 1.1rem; font-weight: bold; color: #38bdf8; margin-top: 4px; }
         .warning-box { background: #0284c7; color: white; padding: 10px; border-radius: 6px; font-weight: bold; text-align: center; font-size: 0.85rem; border: 1px solid #38bdf8; }
         
@@ -59,8 +62,9 @@
 
 <div id="history-bar">
     <h4 style="margin:0 0 5px 0; color:#38bdf8;">📜 MISSION HISTORY</h4>
-    <div style="font-size:0.75rem; color:#94a3b8; margin-bottom:8px;">Logs date, time, duration, return coordinates & skipped repaired spots.</div>
-    <div id="history-log-list" class="history-list" style="max-height: calc(100vh - 80px);">
+    <div style="font-size:0.75rem; color:#94a3b8; margin-bottom:4px;">Logs date, time, duration, return coordinates & skipped repaired spots.</div>
+    <button class="btn-clear-history" onclick="clearHistory()">🗑️ CLEAR HISTORY</button>
+    <div id="history-log-list" class="history-list" style="max-height: calc(100vh - 120px); margin-top:10px;">
         <div style="color: #64748b; font-style: italic; padding: 4px;">No previous mission records found.</div>
     </div>
 </div>
@@ -90,6 +94,7 @@
             <button class="btn-pause" onclick="sendControl('PAUSE')">⏸ PAUSE</button>
             <button class="btn-stop" onclick="sendControl('STOP')">⏹ ABORT & RETURN</button>
         </div>
+        <button id="power-toggle-btn" class="btn-power" onclick="togglePower()">⚡ POWER OFF</button>
     </div>
 
     <div class="card">
@@ -124,6 +129,7 @@
 
 <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
 <script>
+    let isPoweredOn = true;
     const map = L.map('map').setView([17.4210, 78.6560], 16);
 
     L.tileLayer('http://{s}.google.com/vt/lyrs=m&x={x}&y={y}&z={z}', {
@@ -150,6 +156,7 @@
 
     // Click map to select custom start position when stopped
     map.on('click', function(e) {
+        if (!isPoweredOn) return;
         fetch('/api/set_start', {
             method: 'POST',
             headers: {'Content-Type': 'application/json'},
@@ -179,7 +186,7 @@
     function setCameraState(active) {
         const videoElem = document.getElementById('webcam-feed');
         const overlay = document.getElementById('cam-status');
-        if (active) {
+        if (active && isPoweredOn) {
             videoElem.classList.add('active');
             overlay.classList.add('hidden');
         } else {
@@ -189,11 +196,55 @@
     }
 
     function sendControl(cmd) {
+        if (!isPoweredOn && cmd !== 'POWER_OFF') return;
         fetch('/api/control', {
             method: 'POST',
             headers: {'Content-Type': 'application/json'},
             body: JSON.stringify({command: cmd})
         });
+    }
+
+    function togglePower() {
+        const btn = document.getElementById('power-toggle-btn');
+        if (isPoweredOn) {
+            // POWER OFF: Cut camera & clear red dots
+            isPoweredOn = false;
+            sendControl('POWER_OFF');
+            btn.innerText = "⚡ POWER ON";
+            btn.classList.add('off');
+            
+            document.getElementById('rover-status').innerText = "DISCONNECTED";
+            document.getElementById('rover-status').style.color = "#ef4444";
+            document.getElementById('warning-alert').innerText = "🔴 MACHINE & CAMERA POWERED OFF";
+            document.getElementById('warning-alert').style.display = 'block';
+
+            setCameraState(false);
+            clearRedDots();
+        } else {
+            // POWER ON: Re-enable machine
+            isPoweredOn = true;
+            sendControl('STOP');
+            btn.innerText = "⚡ POWER OFF";
+            btn.classList.remove('off');
+            
+            document.getElementById('rover-status').innerText = "READY";
+            document.getElementById('rover-status').style.color = "#38bdf8";
+        }
+    }
+
+    function clearRedDots() {
+        potholeMarkers.forEach(m => map.removeLayer(m));
+        potholeMarkers = [];
+    }
+
+    function clearHistory() {
+        if (confirm("Are you sure you want to delete all stored mission logs?")) {
+            fetch('/api/clear_history', { method: 'POST' })
+            .then(res => res.json())
+            .then(data => {
+                document.getElementById('history-log-list').innerHTML = `<div style="color: #64748b; font-style: italic; padding: 4px;">No previous mission records found.</div>`;
+            });
+        }
     }
 
     function updateConfig() {
@@ -206,6 +257,8 @@
     }
 
     setInterval(() => {
+        if (!isPoweredOn) return;
+
         fetch('/api/telemetry')
             .then(res => res.json())
             .then(data => {
@@ -264,8 +317,7 @@
                 }
 
                 if (data.detections.length === 0 && potholeMarkers.length > 0) {
-                    potholeMarkers.forEach(m => map.removeLayer(m));
-                    potholeMarkers = [];
+                    clearRedDots();
                 }
 
                 if (data.detections.length > potholeMarkers.length) {
