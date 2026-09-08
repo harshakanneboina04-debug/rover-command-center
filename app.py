@@ -117,6 +117,14 @@ def clear_history():
     dashboard_data['mission_history'] = []
     return jsonify({"status": "success", "message": "Mission history cleared."})
 
+@app.route('/api/clear_map', methods=['POST'])
+def clear_map():
+    dashboard_data['detections'] = []
+    dashboard_data['total_potholes'] = 0
+    dashboard_data['total_material_kg'] = 0.0
+    reset_session_cache()
+    return jsonify({"status": "success", "message": "Map markers cleared."})
+
 @app.route('/api/control', methods=['POST'])
 def handle_control():
     data = request.json or {}
