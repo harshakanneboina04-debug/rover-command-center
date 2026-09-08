@@ -121,7 +121,12 @@
 <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
 <script>
     const map = L.map('map').setView([17.4208, 78.6562], 16);
-    L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', { maxZoom: 19 }).addTo(map);
+
+    // Google Maps Roadmap Tiles
+    L.tileLayer('http://{s}.google.com/vt/lyrs=m&x={x}&y={y}&z={z}', {
+        maxZoom: 20,
+        subdomains: ['mt0', 'mt1', 'mt2', 'mt3']
+    }).addTo(map);
 
     const roverIcon = L.divIcon({
         className: 'custom-rover',
@@ -181,14 +186,12 @@
                 document.getElementById('potholes-count').innerText = data.total_potholes;
                 document.getElementById('material-kg').innerText = `${data.total_material_kg} kg`;
 
-                // Update Battery Display
                 const batBar = document.getElementById('battery-bar');
                 const batText = document.getElementById('battery-text');
                 batText.innerText = `${data.battery_pct}%`;
                 batBar.style.width = `${data.battery_pct}%`;
                 batBar.style.backgroundColor = data.battery_pct < 25 ? '#ef4444' : '#22c55e';
 
-                // Update Material Display
                 const matBar = document.getElementById('material-bar');
                 const matText = document.getElementById('material-text');
                 matText.innerText = `${data.material_level_pct}%`;
@@ -197,7 +200,6 @@
 
                 setCameraState(data.camera_active);
 
-                // Warning display
                 const warningBox = document.getElementById('warning-alert');
                 if (data.warning_msg) {
                     warningBox.innerText = data.warning_msg;
