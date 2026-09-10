@@ -6,377 +6,160 @@
     <title>Rover GIS Command Center</title>
     <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
     <style>
-        * { box-sizing: border-box; }
-        body { margin: 0; padding: 0; background-color: #0f172a; color: #f8fafc; font-family: sans-serif; display: flex; height: 100vh; overflow: hidden; }
-        
-        #history-bar { width: 320px; background: #090d16; padding: 15px; border-right: 1px solid #1e293b; display: flex; flex-direction: column; gap: 10px; overflow-y: auto; }
-        #sidebar { width: 360px; padding: 15px; display: flex; flex-direction: column; gap: 12px; background: #1e293b; z-index: 1000; overflow-y: auto; }
-        #map { flex-grow: 1; height: 100%; cursor: crosshair; }
-        
-        .card { background: #0f172a; padding: 12px; border-radius: 8px; border: 1px solid #334155; }
-        
-        .cam-wrapper {
-            position: relative; width: 100%; height: 180px; background: #000;
-            border-radius: 6px; border: 1px solid #475569; overflow: hidden; cursor: pointer;
-        }
-
-        #webcam-feed { width: 100%; height: 100%; object-fit: cover; display: block; opacity: 0; transition: opacity 0.5s ease-in-out; }
-        #webcam-feed.active { opacity: 1; }
-
-        .cam-overlay {
-            position: absolute; top: 0; left: 0; width: 100%; height: 100%;
-            display: flex; align-items: center; justify-content: center;
-            background: rgba(15, 23, 42, 0.85); color: #94a3b8; font-size: 0.85rem; font-weight: bold;
-            text-align: center; padding: 10px; z-index: 10; transition: opacity 0.3s ease;
-        }
-
-        .cam-overlay.hidden { opacity: 0; pointer-events: none; }
-
-        .btn-group { display: flex; gap: 8px; margin-top: 10px; }
-        button { flex: 1; padding: 10px; border: none; border-radius: 4px; font-weight: bold; cursor: pointer; color: white; }
-        .btn-start { background: #22c55e; }
-        .btn-pause { background: #eab308; }
-        .btn-stop { background: #ef4444; }
-        .btn-power { background: #475569; width: 100%; margin-top: 8px; }
-        .btn-power.off { background: #16a34a; }
-        .btn-clear-history { background: #dc2626; width: 100%; margin-top: 8px; padding: 8px; font-size: 0.8rem; }
-        .btn-clear-map { background: #0284c7; width: 100%; margin-top: 8px; padding: 6px; font-size: 0.78rem; }
-        .stat { font-size: 1.1rem; font-weight: bold; color: #38bdf8; margin-top: 4px; }
-        .warning-box { background: #0284c7; color: white; padding: 10px; border-radius: 6px; font-weight: bold; text-align: center; font-size: 0.85rem; border: 1px solid #38bdf8; margin-top: 8px; }
-        
-        .bar-container { background: #334155; border-radius: 4px; height: 10px; width: 100%; margin-top: 4px; overflow: hidden; }
-        .bar-fill { height: 100%; background: #22c55e; transition: width 0.5s ease; }
-
-        .pothole-list, .history-list { max-height: 200px; overflow-y: auto; margin-top: 8px; font-size: 0.8rem; }
-        .pothole-item { display: flex; justify-content: space-between; padding: 4px 6px; background: #1e293b; border-radius: 4px; margin-bottom: 4px; border-left: 3px solid #eab308; }
-        
-        .history-item { background: #1e293b; border-radius: 6px; padding: 10px; margin-bottom: 8px; border-left: 3px solid #38bdf8; font-size: 0.78rem; }
-        .history-item div { margin-bottom: 3px; }
-
-        .robot-marker-icon {
-            background: #0284c7; border: 2px solid #ffffff; border-radius: 50%;
-            display: flex; align-items: center; justify-content: center;
-            box-shadow: 0 0 12px #38bdf8; transition: transform 0.3s ease;
-        }
+        * { box-sizing: border-box; margin: 0; padding: 0; font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif; }
+        body { background-color: #121212; color: #fff; padding: 20px; }
+        .header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 20px; border-bottom: 2px solid #333; padding-bottom: 10px; }
+        .grid-container { display: grid; grid-template-columns: 280px 1fr 320px; gap: 20px; }
+        .card { background: #1e1e1e; border-radius: 8px; padding: 15px; border: 1fr solid #333; }
+        .btn { width: 100%; padding: 12px; margin-bottom: 10px; border: none; border-radius: 5px; font-weight: bold; cursor: pointer; color: white; transition: 0.2s; }
+        .btn-start { background-color: #2e7d32; } .btn-start:hover { background-color: #1b5e20; }
+        .btn-pause { background-color: #f57f17; } .btn-pause:hover { background-color: #f57f17; }
+        .btn-stop { background-color: #c62828; } .btn-stop:hover { background-color: #8e0000; }
+        .btn-power { background-color: #424242; } .btn-power:hover { background-color: #212121; }
+        #map { height: 500px; width: 100%; border-radius: 8px; }
+        .status-box { background: #2a2a2a; padding: 10px; border-radius: 5px; margin-bottom: 15px; border-left: 4px solid #00bcd4; }
+        .input-group { margin-bottom: 15px; }
+        .input-group label { display: block; font-size: 12px; color: #aaa; margin-bottom: 5px; }
+        .input-group input, .input-group select { width: 100%; padding: 8px; background: #2a2a2a; border: 1px solid #444; color: white; border-radius: 4px; }
+        .warning-text { color: #ffca28; font-size: 13px; font-weight: bold; margin-top: 10px; min-height: 20px; }
     </style>
 </head>
 <body>
 
-<div id="history-bar">
-    <h4 style="margin:0 0 5px 0; color:#38bdf8;">📜 MISSION HISTORY</h4>
-    <div style="font-size:0.75rem; color:#94a3b8; margin-bottom:4px;">Logs date, time, duration, return coordinates & skipped repaired spots.</div>
-    <button class="btn-clear-history" onclick="clearHistory()">🗑️ CLEAR HISTORY</button>
-    <div id="history-log-list" class="history-list" style="max-height: calc(100vh - 120px); margin-top:10px;">
-        <div style="color: #64748b; font-style: italic; padding: 4px;">No previous mission records found.</div>
-    </div>
-</div>
-
-<div id="sidebar">
-    <h3 style="margin:0 0 5px 0;">ROVER GIS COMMAND CENTER</h3>
-    
-    <div class="card">
-        <div class="cam-wrapper" onclick="startCamera()">
-            <video id="webcam-feed" autoplay playsinline muted></video>
-            <div id="cam-status" class="cam-overlay">📷 TAP HERE TO START CAMERA</div>
-        </div>
-        <div id="warning-alert" class="warning-box" style="display:none;"></div>
+    <div class="header">
+        <h2>🛰️ ROVER GIS COMMAND CENTER</h2>
+        <div id="statusBadge" style="color: #4caf50; font-weight: bold;">STATUS: READY</div>
     </div>
 
-    <div class="card">
-        <label style="font-size: 0.85rem; font-weight: bold;">TARGET ROUTE DISTANCE</label>
-        <select id="target-km" onchange="updateConfig()" style="width: 100%; padding: 8px; margin-top: 5px; background: #1e293b; color: white; border: 1px solid #475569; border-radius: 4px;">
-            <option value="0.05">0.05 km (50m Demo)</option>
-            <option value="0.5">0.5 km</option>
-            <option value="1.0">1.0 km</option>
-            <option value="5.0">5.0 km</option>
-            <option value="10.0" selected>10.0 km</option>
-        </select>
-        <div class="btn-group">
-            <button class="btn-start" onclick="sendControl('START')">▶ START</button>
-            <button class="btn-pause" onclick="sendControl('PAUSE')">⏸ PAUSE</button>
-            <button class="btn-stop" onclick="sendControl('STOP')">⏹ ABORT & RETURN</button>
+    <div class="grid-container">
+        <!-- LEFT: CONTROLS & DISTANCE SELECTION -->
+        <div class="card">
+            <h3>CONTROLS</h3>
+            <br>
+            
+            <!-- DYNAMIC TARGET DISTANCE INPUT (1 to 10 KM) -->
+            <div class="input-group">
+                <label for="targetDistance">TARGET DISTANCE (1.0 - 10.0 KM):</label>
+                <input 
+                    type="number" 
+                    id="targetDistance" 
+                    min="1.0" 
+                    max="10.0" 
+                    step="0.5" 
+                    value="10.0" 
+                    onchange="setTargetDistance(this.value)"
+                >
+            </div>
+
+            <button class="btn btn-start" onclick="sendCommand('START')">▶ START PATROL</button>
+            <button class="btn btn-pause" onclick="sendCommand('PAUSE')">⏸ PAUSE</button>
+            <button class="btn btn-stop" onclick="sendCommand('STOP')">⏹ ABORT & RETURN</button>
+            <button class="btn btn-power" onclick="sendCommand('POWER_OFF')">⚡ POWER TOGGLE</button>
+            
+            <hr style="border-color: #333; margin: 15px 0;">
+            <button class="btn" style="background:#0288d1;" onclick="clearMap()">📍 CLEAR MAP MARKERS</button>
         </div>
-        <button id="power-toggle-btn" class="btn-power" onclick="togglePower()">⚡ POWER OFF</button>
+
+        <!-- CENTER: LIVE GIS MAP -->
+        <div class="card">
+            <div id="map"></div>
+            <div id="warningMsg" class="warning-text">💡 CLICK ANYWHERE ON THE MAP TO SET A CUSTOM STARTING POINT.</div>
+        </div>
+
+        <!-- RIGHT: TELEMETRY & LOGS -->
+        <div class="card">
+            <h3>TELEMETRY DATA</h3>
+            <br>
+            <div class="status-box">
+                <div>DISTANCE TRAVELED: <strong id="distVal">0.0</strong> / <strong id="targetVal">10.0</strong> km</div>
+            </div>
+            <div class="status-box">
+                <div>BATTERY LEVEL: <strong id="batteryVal">100</strong>%</div>
+            </div>
+            <div class="status-box">
+                <div>MATERIAL LEVEL: <strong id="materialVal">100</strong>%</div>
+            </div>
+            <div class="status-box">
+                <div>REPAIRED POTHOLES: <strong id="potholeVal">0</strong> (<span id="matKgVal">0.0</span> kg used)</div>
+            </div>
+        </div>
     </div>
 
-    <div class="card">
-        <div style="font-size: 0.9rem;">STATUS: <span id="rover-status" class="stat">READY</span></div>
-        <div style="margin-top: 6px; font-size: 0.9rem;">DISTANCE COVERED: <br><span id="distance-km" class="stat">0 / 10.0 km</span></div>
-        <div style="margin-top: 6px; font-size: 0.8rem; color:#facc15;">START SPOT: <span id="start-coords">17.4208, 78.6562</span></div>
-        
-        <div style="margin-top: 8px; font-size: 0.8rem; font-weight: bold;">
-            BATTERY: <span id="battery-text" style="color:#22c55e;">100%</span>
-            <div class="bar-container"><div id="battery-bar" class="bar-fill" style="width: 100%;"></div></div>
-        </div>
+    <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+    <script>
+        let map = L.map('map').setView([17.42080, 78.65620], 15);
+        L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png').addTo(map);
 
-        <div style="margin-top: 8px; font-size: 0.8rem; font-weight: bold;">
-            MATERIAL LEVEL: <span id="material-text" style="color:#22c55e;">100%</span>
-            <div class="bar-container"><div id="material-bar" class="bar-fill" style="width: 100%;"></div></div>
-        </div>
-    </div>
+        let roverMarker = L.marker([17.42080, 78.65620]).addTo(map).bindPopup("Rover Base");
+        let detectionMarkers = [];
 
-    <div class="card">
-        <div style="font-size: 0.85rem; font-weight: bold; color: #facc15;">DETECTED POTHOLE DATA</div>
-        <div style="display:flex; justify-content:space-between; margin-top:4px; font-size:0.85rem;">
-            <span>TOTAL COUNT: <b id="potholes-count" style="color:#38bdf8;">0</b></span>
-            <span>USED: <b id="material-kg" style="color:#38bdf8;">0 kg</b></span>
-        </div>
-        <button class="btn-clear-map" onclick="clearRedDots()">🧹 CLEAR MAP MARKERS</button>
-        <div id="pothole-log-list" class="pothole-list">
-            <div style="color: #64748b; font-style: italic; padding: 4px;">No potholes detected yet.</div>
-        </div>
-    </div>
-</div>
-
-<div id="map"></div>
-
-<script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
-<script>
-    let isPoweredOn = true;
-    let cameraStream = null;
-
-    const map = L.map('map').setView([17.4210, 78.6560], 16);
-
-    L.tileLayer('http://{s}.google.com/vt/lyrs=m&x={x}&y={y}&z={z}', {
-        maxZoom: 20, subdomains: ['mt0', 'mt1', 'mt2', 'mt3']
-    }).addTo(map);
-
-    const robotSvg = `
-    <svg width="24" height="24" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
-        <rect x="5" y="7" width="14" height="12" rx="3" fill="#38bdf8" stroke="#ffffff" stroke-width="2"/>
-        <circle cx="9" cy="11" r="1.5" fill="#0f172a"/>
-        <circle cx="15" cy="11" r="1.5" fill="#0f172a"/>
-        <line x1="12" y1="2" x2="12" y2="7" stroke="#ffffff" stroke-width="2"/>
-        <circle cx="12" cy="2" r="1.5" fill="#ef4444"/>
-        <rect x="8" y="15" width="8" height="2" rx="1" fill="#0f172a"/>
-    </svg>`;
-
-    const robotIcon = L.divIcon({
-        className: 'robot-marker-icon', html: robotSvg, iconSize: [32, 32], iconAnchor: [16, 16]
-    });
-
-    let roverMarker = L.marker([17.42080, 78.65620], {icon: robotIcon}).addTo(map);
-    let startMarker = L.marker([17.42080, 78.65620]).addTo(map).bindPopup("<b>Start Location</b>");
-    let potholeMarkers = [];
-
-    map.on('click', function(e) {
-        if (!isPoweredOn) return;
-        fetch('/api/set_start', {
-            method: 'POST',
-            headers: {'Content-Type': 'application/json'},
-            body: JSON.stringify({lat: e.latlng.lat, lng: e.latlng.lng})
-        })
-        .then(res => res.json())
-        .then(data => {
-            if (data.status === "success") {
-                const newPos = [data.lat, data.lng];
-                roverMarker.setLatLng(newPos);
-                startMarker.setLatLng(newPos).bindPopup(`<b>Custom Start Point</b><br>${data.lat.toFixed(4)}, ${data.lng.toFixed(4)}`).openPopup();
-                document.getElementById('start-coords').innerText = `${data.lat.toFixed(4)}, ${data.lng.toFixed(4)}`;
-            }
+        // Set custom start point on map click
+        map.on('click', function(e) {
+            fetch('/api/set_start', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ lat: e.latlng.lat, lng: e.latlng.lng })
+            }).then(res => res.json()).then(data => {
+                if(data.status === 'success') {
+                    roverMarker.setLatLng([data.lat, data.lng]);
+                }
+            });
         });
-    });
 
-    async function startCamera() {
-        if (!isPoweredOn) return;
-        
-        const videoElem = document.getElementById('webcam-feed');
-        const overlay = document.getElementById('cam-status');
+        // Set Target Distance (1 to 10 km)
+        function setTargetDistance(val) {
+            let targetVal = parseFloat(val);
+            if (isNaN(targetVal) || targetVal < 1.0) targetVal = 1.0;
+            if (targetVal > 10.0) targetVal = 10.0;
 
-        overlay.innerText = "⏳ INITIALIZING CAMERA...";
-
-        try {
-            // Priority setup: Mobile environment camera -> fallback to standard video stream
-            const constraints = {
-                video: { facingMode: { ideal: "environment" }, width: { ideal: 640 }, height: { ideal: 480 } },
-                audio: false
-            };
-
-            cameraStream = await navigator.mediaDevices.getUserMedia(constraints);
-            videoElem.srcObject = cameraStream;
-            
-            videoElem.onloadedmetadata = () => {
-                videoElem.play();
-                videoElem.classList.add('active');
-                overlay.classList.add('hidden');
-            };
-
-        } catch (err) {
-            console.warn("Primary camera constraint failed, falling back to basic camera request...", err);
-            try {
-                cameraStream = await navigator.mediaDevices.getUserMedia({ video: true, audio: false });
-                videoElem.srcObject = cameraStream;
-                videoElem.onloadedmetadata = () => {
-                    videoElem.play();
-                    videoElem.classList.add('active');
-                    overlay.classList.add('hidden');
-                };
-            } catch (fallbackErr) {
-                console.error("Camera access failed:", fallbackErr);
-                overlay.innerText = "⚠️ CAMERA PERMISSION DENIED";
-                alert("Camera access block detected. Ensure site is on HTTPS and permission is set to Allow in browser settings.");
-            }
-        }
-    }
-
-    function stopCamera() {
-        const videoElem = document.getElementById('webcam-feed');
-        const overlay = document.getElementById('cam-status');
-
-        if (cameraStream) {
-            cameraStream.getTracks().forEach(track => track.stop());
-            cameraStream = null;
-        }
-
-        videoElem.classList.remove('active');
-        overlay.classList.remove('hidden');
-        overlay.innerText = "📷 CAMERA OFFLINE";
-    }
-
-    // Auto-attempt camera start on load
-    window.addEventListener('DOMContentLoaded', () => {
-        startCamera();
-    });
-
-    function sendControl(cmd) {
-        if (!isPoweredOn && cmd !== 'POWER_OFF') return;
-        fetch('/api/control', {
-            method: 'POST',
-            headers: {'Content-Type': 'application/json'},
-            body: JSON.stringify({command: cmd})
-        });
-    }
-
-    function togglePower() {
-        const btn = document.getElementById('power-toggle-btn');
-        if (isPoweredOn) {
-            isPoweredOn = false;
-            sendControl('POWER_OFF');
-            btn.innerText = "⚡ POWER ON";
-            btn.classList.add('off');
-            
-            document.getElementById('rover-status').innerText = "DISCONNECTED";
-            document.getElementById('rover-status').style.color = "#ef4444";
-            document.getElementById('warning-alert').innerText = "🔴 MACHINE & CAMERA POWERED OFF";
-            document.getElementById('warning-alert').style.display = 'block';
-
-            stopCamera();
-            clearRedDots();
-        } else {
-            isPoweredOn = true;
-            sendControl('STOP');
-            btn.innerText = "⚡ POWER OFF";
-            btn.classList.remove('off');
-            
-            document.getElementById('rover-status').innerText = "READY";
-            document.getElementById('rover-status').style.color = "#38bdf8";
-            
-            startCamera();
-        }
-    }
-
-    function clearRedDots() {
-        potholeMarkers.forEach(m => map.removeLayer(m));
-        potholeMarkers = [];
-        fetch('/api/clear_map', { method: 'POST' });
-    }
-
-    function clearHistory() {
-        if (confirm("Are you sure you want to delete all stored mission logs?")) {
-            fetch('/api/clear_history', { method: 'POST' })
-            .then(res => res.json())
-            .then(data => {
-                document.getElementById('history-log-list').innerHTML = `<div style="color: #64748b; font-style: italic; padding: 4px;">No previous mission records found.</div>`;
+            fetch('/api/config', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ target_km: targetVal })
             });
         }
-    }
 
-    function updateConfig() {
-        const val = document.getElementById('target-km').value;
-        fetch('/api/config', {
-            method: 'POST',
-            headers: {'Content-Type': 'application/json'},
-            body: JSON.stringify({target_km: val})
-        });
-    }
+        function sendCommand(cmd) {
+            fetch('/api/control', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ command: cmd })
+            });
+        }
 
-    setInterval(() => {
-        if (!isPoweredOn) return;
+        function clearMap() {
+            fetch('/api/clear_map', { method: 'POST' });
+        }
 
-        fetch('/api/telemetry')
-            .then(res => res.json())
-            .then(data => {
-                document.getElementById('rover-status').innerText = data.rover_status;
-                document.getElementById('distance-km').innerText = `${data.distance_traveled_km} / ${data.target_km} km`;
-                document.getElementById('potholes-count').innerText = data.total_potholes;
-                document.getElementById('material-kg').innerText = `${data.total_material_kg} kg`;
-                document.getElementById('start-coords').innerText = `${data.start_lat.toFixed(4)}, ${data.start_lng.toFixed(4)}`;
+        // Telemetry Polling Loop (Every 1 second)
+        setInterval(() => {
+            fetch('/api/telemetry')
+                .then(res => res.json())
+                .then(data => {
+                    document.getElementById('statusBadge').innerText = "STATUS: " + data.rover_status;
+                    document.getElementById('distVal').innerText = data.distance_traveled_km;
+                    document.getElementById('targetVal').innerText = data.target_km;
+                    document.getElementById('batteryVal').innerText = data.battery_pct;
+                    document.getElementById('materialVal').innerText = data.material_level_pct;
+                    document.getElementById('potholeVal').innerText = data.total_potholes;
+                    document.getElementById('matKgVal').innerText = data.total_material_kg;
+                    document.getElementById('warningMsg').innerText = data.warning_msg;
 
-                const batBar = document.getElementById('battery-bar');
-                document.getElementById('battery-text').innerText = `${data.battery_pct}%`;
-                batBar.style.width = `${data.battery_pct}%`;
-                batBar.style.backgroundColor = data.battery_pct < 25 ? '#ef4444' : '#22c55e';
+                    // Update Rover position
+                    roverMarker.setLatLng([data.current_lat, data.current_lng]);
 
-                const matBar = document.getElementById('material-bar');
-                document.getElementById('material-text').innerText = `${data.material_level_pct}%`;
-                matBar.style.width = `${data.material_level_pct}%`;
-                matBar.style.backgroundColor = data.material_level_pct < 20 ? '#ef4444' : '#22c55e';
-
-                const warningBox = document.getElementById('warning-alert');
-                if (data.warning_msg) {
-                    warningBox.innerText = data.warning_msg;
-                    warningBox.style.display = 'block';
-                } else {
-                    warningBox.style.display = 'none';
-                }
-
-                const pos = [data.current_lat, data.current_lng];
-                roverMarker.setLatLng(pos);
-
-                const logContainer = document.getElementById('pothole-log-list');
-                if (data.detections.length > 0) {
-                    logContainer.innerHTML = data.detections.map(det => `
-                        <div class="pothole-item">
-                            <span><b>${det.id}</b> (${det.lat.toFixed(4)}, ${det.lng.toFixed(4)})</span>
-                            <span style="color:#22c55e;">${det.mat} kg</span>
-                        </div>
-                    `).join('');
-                } else {
-                    logContainer.innerHTML = `<div style="color: #64748b; font-style: italic; padding: 4px;">No potholes detected yet.</div>`;
-                }
-
-                const historyContainer = document.getElementById('history-log-list');
-                if (data.mission_history && data.mission_history.length > 0) {
-                    historyContainer.innerHTML = data.mission_history.map(h => `
-                        <div class="history-item">
-                            <div style="color:#facc15; font-weight:bold;">${h.id} — ${h.timestamp}</div>
-                            <div><b>Start:</b> ${h.start_place}</div>
-                            <div><b>Return Loc:</b> ${h.return_place}</div>
-                            <div><b>Time Taken:</b> ${h.duration}</div>
-                            <div><b>Filled:</b> ${h.potholes_filled} potholes (${h.material_used})</div>
-                        </div>
-                    `).join('');
-                }
-
-                if (data.detections.length === 0 && potholeMarkers.length > 0) {
-                    potholeMarkers.forEach(m => map.removeLayer(m));
-                    potholeMarkers = [];
-                }
-
-                if (data.detections.length > potholeMarkers.length) {
-                    data.detections.slice(potholeMarkers.length).forEach(det => {
-                        const m = L.circleMarker([det.lat, det.lng], {
-                            color: '#ef4444', fillColor: '#facc15', fillOpacity: 0.9, radius: 8
-                        }).addTo(map);
-
-                        m.bindPopup(`<b>${det.id} Detected</b><br>Lat: ${det.lat}<br>Lng: ${det.lng}<br>Fill Material: ${det.mat} kg`);
-                        potholeMarkers.push(m);
-                    });
-                }
-            })
-            .catch(err => console.error("Telemetry fetch error:", err));
-    }, 2500);
-</script>
-
+                    // Render detections
+                    if(data.detections.length === 0) {
+                        detectionMarkers.forEach(m => map.removeLayer(m));
+                        detectionMarkers = [];
+                    } else if(data.detections.length > detectionMarkers.length) {
+                        let newDet = data.detections[data.detections.length - 1];
+                        let marker = L.circleMarker([newDet.lat, newDet.lng], { color: 'red', radius: 8 }).addTo(map);
+                        marker.bindPopup(`Pothole ${newDet.id}: ${newDet.mat} kg filled`);
+                        detectionMarkers.push(marker);
+                    }
+                });
+        }, 1000);
+    </script>
 </body>
 </html>
