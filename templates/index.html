@@ -83,14 +83,17 @@
     </div>
 
     <div class="card">
-        <label style="font-size: 0.85rem; font-weight: bold;">TARGET ROUTE DISTANCE</label>
-        <select id="target-km" onchange="updateConfig()" style="width: 100%; padding: 8px; margin-top: 5px; background: #1e293b; color: white; border: 1px solid #475569; border-radius: 4px;">
-            <option value="0.05">0.05 km (50m Demo)</option>
-            <option value="0.5">0.5 km</option>
-            <option value="1.0">1.0 km</option>
-            <option value="5.0">5.0 km</option>
-            <option value="10.0" selected>10.0 km</option>
-        </select>
+        <label style="font-size: 0.85rem; font-weight: bold;">TARGET ROUTE DISTANCE (1 - 10 KM)</label>
+        <input 
+            type="number" 
+            id="target-km" 
+            min="1.0" 
+            max="10.0" 
+            step="0.5" 
+            value="10.0" 
+            onchange="updateConfig()" 
+            style="width: 100%; padding: 8px; margin-top: 5px; background: #1e293b; color: white; border: 1px solid #475569; border-radius: 4px;"
+        >
         <div class="btn-group">
             <button class="btn-start" onclick="sendControl('START')">▶ START</button>
             <button class="btn-pause" onclick="sendControl('PAUSE')">⏸ PAUSE</button>
