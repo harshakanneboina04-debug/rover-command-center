@@ -15,7 +15,7 @@ WAYPOINTS = [
     (17.42010, 78.65280), # Step 5: Vehicle 2
     (17.42020, 78.65210), # Step 6: Pothole 3
     (17.42050, 78.65140), # Step 7
-    (17.42080, 78.65080), # Step 8: Abort Point (~4km)
+    (17.42080, 78.65080), # Step 8: Abort Point
     (17.42125, 78.65020), # Step 9: Pothole 4
     (17.42170, 78.64960), # Step 10
     (17.42215, 78.64880), # Step 11: Pothole 5
@@ -78,7 +78,13 @@ def handle_config():
     if dashboard_data['control_state'] == 'POWERED_OFF':
         return jsonify({"status": "error", "message": "Machine is powered off."})
     data = request.json or {}
-    dashboard_data['target_km'] = float(data.get('target_km', 10.0))
+    try:
+        user_target = float(data.get('target_km', 10.0))
+        # Clamp distance dynamically between 1.0 km and 10.0 km
+        clamped_target = max(1.0, min(10.0, user_target))
+        dashboard_data['target_km'] = round(clamped_target, 2)
+    except (ValueError, TypeError):
+        dashboard_data['target_km'] = 10.0
     return jsonify({"status": "success", "target_km": dashboard_data['target_km']})
 
 @app.route('/api/set_start', methods=['POST'])
@@ -196,7 +202,8 @@ def handle_telemetry():
 
     if dashboard_data['control_state'] == 'RUNNING':
         target_km = dashboard_data['target_km']
-        km_increment = round(target_km / 60.0, 3)
+        total_steps = len(active_waypoints) - 1
+        km_increment = round(target_km / total_steps, 3) if total_steps > 0 else 0.1
 
         dashboard_data['battery_pct'] = max(0.0, round(dashboard_data['battery_pct'] - round(random.uniform(0.5, 1.2), 1), 1))
 
@@ -212,7 +219,7 @@ def handle_telemetry():
                 dashboard_data['warning_msg'] = "⚠️ LOW MATERIAL (<15%)! RETURNING TO START..."
                 dashboard_data['rover_status'] = "AUTO_RETURNING"
             else:
-                dashboard_data['step_idx'] = min(dashboard_data['step_idx'] + 1, len(active_waypoints) - 1)
+                dashboard_data['step_idx'] = min(dashboard_data['step_idx'] + 1, total_steps)
                 base_lat, base_lng = active_waypoints[dashboard_data['step_idx']]
 
                 if dashboard_data['step_idx'] in VEHICLE_STEPS:
@@ -228,10 +235,9 @@ def handle_telemetry():
                     dashboard_data['current_lat'] = base_lat
                     dashboard_data['current_lng'] = base_lng
 
-                dashboard_data['distance_traveled_km'] = round(dashboard_data['distance_traveled_km'] + km_increment, 3)
+                dashboard_data['distance_traveled_km'] = round(min(target_km, dashboard_data['distance_traveled_km'] + km_increment), 3)
                 current_step = dashboard_data['step_idx']
 
-                # --- STEP SKIP / RESUME SCAN LOGIC ---
                 if current_step <= max_step_reached and max_step_reached > 0:
                     dashboard_data['warning_msg'] = f"⏩ TRANSITING: RETURNING TO RESUME POINT (STEP {current_step}/{max_step_reached})"
                 else:
@@ -255,12 +261,12 @@ def handle_telemetry():
 
                     max_step_reached = current_step
 
-                if dashboard_data['distance_traveled_km'] >= target_km or dashboard_data['step_idx'] >= len(active_waypoints) - 1:
+                if dashboard_data['distance_traveled_km'] >= target_km or dashboard_data['step_idx'] >= total_steps:
                     dashboard_data['distance_traveled_km'] = target_km
                     dashboard_data['returning'] = True
                     dashboard_data['return_location'] = {"lat": dashboard_data['current_lat'], "lng": dashboard_data['current_lng']}
                     dashboard_data['rover_status'] = "RETURNING_TO_BASE"
-                    dashboard_data['warning_msg'] = "ℹ️ TARGET REACHED. RETURNING TO START..."
+                    dashboard_data['warning_msg'] = f"ℹ️ TARGET OF {target_km} KM REACHED. RETURNING TO START..."
                 else:
                     if not dashboard_data['warning_msg'].startswith("⏩") and not dashboard_data['warning_msg'].startswith("🚨"):
                         dashboard_data['rover_status'] = "PATROL_ACTIVE"
